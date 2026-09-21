@@ -1,11 +1,15 @@
 # Marginalia
 
-A PDF reader with a freeform notes canvas next to it. Pull excerpts out of the
-PDF, write your own notes on them, connect related excerpts with a thread,
-and click any card to jump straight back to the exact page it came from.
+A PDF reader with a freeform notes canvas next to it. Pull excerpts out of
+any PDF, write your own notes on them, connect related excerpts with a
+thread, and click any card to jump straight back to the exact page it came
+from.
 
-Organize PDFs into folders on the left; every PDF automatically gets its own
-paired notes canvas, listed under Notes.
+PDFs and notes canvases are organized independently, each in their own
+folder tree on the left. A canvas isn't tied to one PDF — the same canvas
+can hold excerpts pulled from several different PDFs, each card labeled
+with (and linked back to) the document it came from. Dark mode is in the
+top bar.
 
 ## Running it
 
