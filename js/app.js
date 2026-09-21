@@ -57,15 +57,20 @@ async function openDocument(docId) {
   canvasTitleEl.textContent = doc.name.replace(/\.pdf$/i, '') + ' — canvas';
 
   const buffer = doc.blob.slice(0); // ArrayBuffer copy since pdf.js detaches it
-  await pdfView.load(buffer);
-
   const [cardRecords, linkRecords] = await Promise.all([
     DB.byIndex('cards', 'docId', docId),
     DB.byIndex('links', 'docId', docId),
   ]);
   const links = linkRecords.map((l) => [l.a, l.b]);
   canvas.setDocument(docId, cardRecords, links);
-  cardRecords.forEach((c) => pdfView.drawHighlight(c));
+
+  try {
+    await pdfView.load(buffer);
+    cardRecords.forEach((c) => pdfView.drawHighlight(c));
+  } catch (err) {
+    // pdfView already shows an inline error in the reading pane; the notes
+    // canvas for this doc still works, so we don't block on this.
+  }
 
   if (window.innerWidth <= 900) railEl.classList.remove('open');
 }

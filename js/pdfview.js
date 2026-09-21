@@ -2,7 +2,12 @@
 // a highlight overlay for excerpts pulled onto the notes canvas.
 
 import * as pdfjsLib from '../vendor/pdfjs/pdf.min.mjs';
-pdfjsLib.GlobalWorkerOptions.workerSrc = '../vendor/pdfjs/pdf.worker.min.mjs';
+// Resolve explicitly against this module's own URL (not the page's URL) —
+// the worker is constructed by the browser relative to document location by
+// default, which breaks whenever the page isn't served from a plain root
+// (e.g. hosted artifact paths), even though the static `import` above is
+// always resolved correctly per the ES module spec.
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('../vendor/pdfjs/pdf.worker.min.mjs', import.meta.url).href;
 
 const RENDER_SCALE = 1.5;
 
@@ -23,11 +28,19 @@ export default class PdfView {
   async load(arrayBuffer) {
     this.container.innerHTML = '';
     this.pageWraps.clear();
-    const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
-    this.pdf = await loadingTask.promise;
-
-    for (let pageNum = 1; pageNum <= this.pdf.numPages; pageNum++) {
-      await this._renderPage(pageNum);
+    try {
+      const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+      this.pdf = await loadingTask.promise;
+      for (let pageNum = 1; pageNum <= this.pdf.numPages; pageNum++) {
+        await this._renderPage(pageNum);
+      }
+    } catch (err) {
+      console.error('Marginalia: failed to load PDF', err);
+      this.container.innerHTML =
+        '<div style="padding:24px;color:var(--danger);font-size:13px;max-width:420px;">' +
+        "Couldn't open this PDF (" + (err && err.message ? err.message : 'unknown error') + '). ' +
+        'Try re-importing the file, or a different PDF.</div>';
+      throw err;
     }
   }
 
