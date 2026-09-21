@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Marginalia</title>
+<link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div class="app">
+    <div class="topbar">
+      <button class="rail-toggle" id="railToggle">☰ Folders</button>
+      <div class="wordmark">margin<em>alia</em></div>
+      <div class="doc-title" id="docTitle">No document open</div>
+      <button class="import-btn" id="importBtn">＋ Import PDF</button>
+      <input type="file" id="fileInput" accept="application/pdf" style="display:none" />
+    </div>
+
+    <div class="body-row">
+      <nav class="rail" id="rail">
+        <div class="rail-group">
+          <h3>PDFs <span class="add" id="addPdfFolder" title="New folder">＋</span></h3>
+          <div class="rail-tree" id="pdfGroup"></div>
+        </div>
+        <div class="rail-group notes">
+          <h3>Notes</h3>
+          <div class="rail-tree" id="notesGroup"></div>
+        </div>
+      </nav>
+
+      <main class="reading" id="reading">
+        <div class="reading-empty" id="readingEmpty">
+          <div class="big">Nothing open yet</div>
+          <div>Import a PDF to start reading and pulling out excerpts.</div>
+          <button id="emptyImportBtn">＋ Import PDF</button>
+        </div>
+        <div id="pdfPages"></div>
+        <button class="pull-btn" id="pullBtn">＋ Pull to canvas</button>
+      </main>
+
+      <section class="canvas-wrap">
+        <div class="canvas-head">
+          <h2 id="canvasTitle">Notes</h2>
+          <div class="hint">drag cards · drag the circle to link · click a card to jump back</div>
+        </div>
+        <div class="canvas" id="canvas">
+          <div class="canvas-inner" id="canvasInner">
+            <div class="canvas-empty" id="canvasEmpty">Select text in the PDF and choose "Pull to canvas" — your excerpts and notes will collect here, linked back to the page they came from.</div>
+            <svg><g id="linkGroup"></g></svg>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
