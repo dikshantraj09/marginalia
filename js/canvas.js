@@ -1,6 +1,14 @@
 // The freeform notes canvas: excerpt cards (with your own notes attached),
 // dragging, linking cards with threads, and click-to-jump back to the source page.
 
+function truncateName(name) {
+  const base = name.replace(/\.pdf$/i, '');
+  return base.length > 22 ? base.slice(0, 22) + '…' : base;
+}
+function escapeAttr(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
 export default class NotesCanvas {
   constructor(canvasEl, innerEl, svgGroupEl, emptyEl, callbacks) {
     this.canvasEl = canvasEl;
@@ -11,16 +19,14 @@ export default class NotesCanvas {
     this.cards = [];
     this.links = [];
     this.cardEls = new Map();
-    this.docId = null;
-    this._nextPos = { x: 40, y: 40 };
+    this.canvasId = null;
     this._saveTimers = new Map();
   }
 
-  setDocument(docId, cards, links) {
-    this.docId = docId;
+  setCanvas(canvasId, cards, links) {
+    this.canvasId = canvasId;
     this.cards = cards || [];
     this.links = links || [];
-    this._nextPos = { x: 40, y: 40 };
     this._renderAll();
   }
 
@@ -36,11 +42,13 @@ export default class NotesCanvas {
     this.emptyEl.style.display = this.cards.length ? 'none' : 'block';
   }
 
-  addExcerptCard({ page, rects, text }) {
+  addExcerptCard({ docId, docName, page, rects, text }) {
     const pos = this._claimPosition();
     const card = {
       id: 'card_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-      docId: this.docId,
+      canvasId: this.canvasId,
+      docId,
+      docName,
       page,
       rects,
       excerpt: text.length > 220 ? text.slice(0, 220) + '…' : text,
@@ -55,13 +63,16 @@ export default class NotesCanvas {
     return card;
   }
 
+  // Lay new cards out in a simple grid, wide and tall enough that a card
+  // with a couple of lines of note text won't overlap its neighbors. This
+  // is only a starting position — the point of a freeform canvas is that
+  // the user can drag from here.
   _claimPosition() {
-    const pos = { ...this._nextPos };
-    this._nextPos.x += 36;
-    this._nextPos.y += 26;
-    if (this._nextPos.x > 900) this._nextPos.x = 40;
-    if (this._nextPos.y > 1100) this._nextPos.y = 40;
-    return pos;
+    const COLS = 5, COL_W = 240, ROW_H = 190, MARGIN = 40;
+    const index = this.cards.length;
+    const col = index % COLS;
+    const row = Math.floor(index / COLS);
+    return { x: MARGIN + col * COL_W, y: MARGIN + row * ROW_H };
   }
 
   _renderCard(c) {
@@ -83,8 +94,9 @@ export default class NotesCanvas {
 
     const meta = document.createElement('div');
     meta.className = 'meta';
+    const sourceLabel = (c.docName ? truncateName(c.docName) + ' · ' : '') + 'p.' + c.page;
     meta.innerHTML =
-      '<span class="page-tag">p.' + c.page + '</span>' +
+      '<span class="page-tag" title="' + escapeAttr(c.docName || '') + ', page ' + c.page + '">' + escapeAttr(sourceLabel) + '</span>' +
       '<span class="card-actions"><span class="del" title="Remove">✕</span><span class="link-nub" title="Drag to link"></span></span>';
 
     el.appendChild(quote);
@@ -135,7 +147,28 @@ export default class NotesCanvas {
     });
   }
 
-  _removeCard(c) {
+  // Called after a source PDF is deleted elsewhere — drop any cards pulled
+  // from it (their DB records are already gone; this just syncs the view).
+  removeCardsByDoc(docId) {
+    const toRemove = this.cards.filter((c) => c.docId === docId);
+    toRemove.forEach((c) => this._removeCard(c, { alreadyPersisted: true }));
+  }
+
+  // Called after a source PDF is renamed elsewhere — keep the "p.N" labels
+  // showing the current name without a full reload.
+  renameDocOnCards(docId, newName) {
+    this.cards.filter((c) => c.docId === docId).forEach((c) => {
+      c.docName = newName;
+      const el = this.cardEls.get(c.id);
+      const tag = el && el.querySelector('.page-tag');
+      if (tag) {
+        tag.textContent = truncateName(newName) + ' · p.' + c.page;
+        tag.title = newName + ', page ' + c.page;
+      }
+    });
+  }
+
+  _removeCard(c, opts) {
     this.cards = this.cards.filter((x) => x.id !== c.id);
     this.links = this.links.filter((l) => l[0] !== c.id && l[1] !== c.id);
     const el = this.cardEls.get(c.id);
@@ -143,7 +176,7 @@ export default class NotesCanvas {
     this.cardEls.delete(c.id);
     this._drawLinks();
     this._updateEmptyState();
-    if (this.cb.onCardRemoved) this.cb.onCardRemoved(c.id);
+    if (!(opts && opts.alreadyPersisted) && this.cb.onCardRemoved) this.cb.onCardRemoved(c.id);
   }
 
   _persistCard(c) {

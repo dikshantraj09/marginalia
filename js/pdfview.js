@@ -22,7 +22,15 @@ export default class PdfView {
     this.pdf = null;
     this._selection = null;
 
-    document.addEventListener('selectionchange', () => this._handleSelectionChange());
+    // Debounced: selectionchange fires rapidly (per character) while a touch
+    // selection is being dragged, and reacting to every tick made the pull
+    // button flicker/reposition constantly. Settling for ~90ms is imperceptible
+    // as a delay but skips the noise.
+    this._selectionDebounce = null;
+    document.addEventListener('selectionchange', () => {
+      clearTimeout(this._selectionDebounce);
+      this._selectionDebounce = setTimeout(() => this._handleSelectionChange(), 90);
+    });
   }
 
   async load(arrayBuffer) {
@@ -126,8 +134,19 @@ export default class PdfView {
 
     const readingRect = this.scrollHost.getBoundingClientRect();
     const firstRect = clientRects[0];
-    this.pullBtn.style.left = Math.max(8, firstRect.left - readingRect.left) + 'px';
-    this.pullBtn.style.top = (firstRect.top - readingRect.top + this.scrollHost.scrollTop - 38) + 'px';
+    const btnWidth = 150; // approx — clamped so it never runs off the right edge
+    const left = Math.min(
+      Math.max(8, firstRect.left - readingRect.left),
+      readingRect.width - btnWidth
+    );
+    // prefer just above the selection, but flip below it if that would go
+    // off the top of the visible pane
+    const aboveTop = firstRect.top - readingRect.top + this.scrollHost.scrollTop - 38;
+    const top = aboveTop < this.scrollHost.scrollTop + 4
+      ? firstRect.bottom - readingRect.top + this.scrollHost.scrollTop + 8
+      : aboveTop;
+    this.pullBtn.style.left = left + 'px';
+    this.pullBtn.style.top = top + 'px';
     this.pullBtn.style.display = 'flex';
 
     if (this.onSelectionReady) this.onSelectionReady(this._selection);
@@ -189,6 +208,13 @@ export default class PdfView {
       });
       info.highlightLayer.appendChild(el);
     });
+  }
+
+  // Wipe every highlight from every rendered page — used when switching
+  // which notes canvas is active, since a different canvas means a
+  // different set of cards (and thus highlights) apply to this PDF.
+  clearAllHighlights() {
+    for (const [, info] of this.pageWraps) info.highlightLayer.innerHTML = '';
   }
 
   removeHighlight(cardId, page) {

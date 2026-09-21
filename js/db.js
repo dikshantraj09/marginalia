@@ -1,10 +1,12 @@
 // Minimal IndexedDB wrapper — no external dependency.
-// Stores: folders, documents (PDF blobs), cards (canvas excerpts), links (card connections)
+// Stores: folders (kind: 'pdf' | 'note'), documents (PDF blobs),
+// canvases (independent notes workspaces), cards (excerpts on a canvas,
+// each pointing back at a source document+page), links (card connections).
 // Falls back to an in-memory store if IndexedDB is unavailable or blocked
 // (private windows, some preview/thumbnail contexts) so the app still renders.
 
 const DB_NAME = 'marginalia';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 function openDB() {
   return new Promise((resolve, reject) => {
@@ -13,6 +15,7 @@ function openDB() {
       const req = indexedDB.open(DB_NAME, DB_VERSION);
       req.onupgradeneeded = (e) => {
         const db = e.target.result;
+        const tx = e.target.transaction;
         if (!db.objectStoreNames.contains('folders')) {
           const s = db.createObjectStore('folders', { keyPath: 'id' });
           s.createIndex('parentId', 'parentId');
@@ -21,13 +24,24 @@ function openDB() {
           const s = db.createObjectStore('documents', { keyPath: 'id' });
           s.createIndex('folderId', 'folderId');
         }
+        if (!db.objectStoreNames.contains('canvases')) {
+          const s = db.createObjectStore('canvases', { keyPath: 'id' });
+          s.createIndex('folderId', 'folderId');
+        }
         if (!db.objectStoreNames.contains('cards')) {
           const s = db.createObjectStore('cards', { keyPath: 'id' });
           s.createIndex('docId', 'docId');
+          s.createIndex('canvasId', 'canvasId');
+        } else {
+          const s = tx.objectStore('cards');
+          if (!s.indexNames.contains('canvasId')) s.createIndex('canvasId', 'canvasId');
         }
         if (!db.objectStoreNames.contains('links')) {
           const s = db.createObjectStore('links', { keyPath: 'id' });
-          s.createIndex('docId', 'docId');
+          s.createIndex('canvasId', 'canvasId');
+        } else {
+          const s = tx.objectStore('links');
+          if (!s.indexNames.contains('canvasId')) s.createIndex('canvasId', 'canvasId');
         }
       };
       req.onsuccess = () => resolve(req.result);
@@ -45,20 +59,28 @@ function reqToPromise(req) {
   });
 }
 
+const ALL_STORES = ['folders', 'documents', 'canvases', 'cards', 'links'];
+
 // In-memory fallback store — same shape of API, nothing persists across reloads.
 function makeMemoryStore() {
-  const data = { folders: new Map(), documents: new Map(), cards: new Map(), links: new Map() };
-  const indexKey = { folders: 'parentId', documents: 'folderId', cards: 'docId', links: 'docId' };
+  const data = {};
+  ALL_STORES.forEach((s) => (data[s] = new Map()));
+  const indexKeys = {
+    folders: ['parentId'],
+    documents: ['folderId'],
+    canvases: ['folderId'],
+    cards: ['docId', 'canvasId'],
+    links: ['canvasId'],
+  };
   return {
     async put(store, value) { data[store].set(value.id, value); return value.id; },
     async delete(store, id) { data[store].delete(id); },
     async get(store, id) { return data[store].get(id); },
     async all(store) { return Array.from(data[store].values()); },
-    async byIndex(store, _index, value) {
-      const key = indexKey[store];
-      return Array.from(data[store].values()).filter((v) => v[key] === value);
+    async byIndex(store, index, value) {
+      return Array.from(data[store].values()).filter((v) => v[index] === value);
     },
-    async clearAll() { Object.values(data).forEach((m) => m.clear()); },
+    async clearAll() { ALL_STORES.forEach((s) => data[s].clear()); },
   };
 }
 
@@ -87,8 +109,8 @@ async function backend() {
         return reqToPromise(db.transaction([store], 'readonly').objectStore(store).index(index).getAll(value));
       },
       async clearAll() {
-        const t = db.transaction(['folders', 'documents', 'cards', 'links'], 'readwrite');
-        ['folders', 'documents', 'cards', 'links'].forEach((s) => t.objectStore(s).clear());
+        const t = db.transaction(ALL_STORES, 'readwrite');
+        ALL_STORES.forEach((s) => t.objectStore(s).clear());
       },
     };
   } catch (err) {
