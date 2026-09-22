@@ -1,0 +1,10 @@
+node_modules
+.git
+.wrangler
+.github
+package.json
+package-lock.json
+wrangler.toml
+README.md
+*.pdf
+artifact-test.html
