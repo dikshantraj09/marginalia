@@ -33,20 +33,30 @@ function escapeHtml(s) {
 // would otherwise land the whole arrowhead underneath the (opaque, on
 // top) card and make it invisible. Approximates the real cubic curve with
 // its chord, which is accurate enough this close to the endpoint.
+//
+// Also reports which pair of edges was actually crossed (`axis: 'x'` for
+// the left/right edges, `'y'` for top/bottom) — the curve build in
+// _addPath needs that to orient the arrowhead correctly (see the comment
+// there): entering through a side edge wants a left/right-pointing arrow,
+// through the top or bottom a up/down-pointing one, and a curve shaped
+// for one but ending at the other draws a technically-attached but
+// visibly wrong-facing arrowhead.
 function segmentRectEntry(from, to, rect) {
   const dx = to.x - from.x, dy = to.y - from.y;
-  let t0 = 0, t1 = 1;
-  const clip = (p, d, lo, hi) => {
-    if (d === 0) return p >= lo && p <= hi;
+  const span = (p, d, lo, hi) => {
+    if (d === 0) return p >= lo && p <= hi ? { enter: -Infinity, exit: Infinity } : null;
     let a = (lo - p) / d, b = (hi - p) / d;
     if (a > b) { const tmp = a; a = b; b = tmp; }
-    t0 = Math.max(t0, a);
-    t1 = Math.min(t1, b);
-    return t0 <= t1;
+    return { enter: a, exit: b };
   };
-  if (!clip(from.x, dx, rect.left, rect.right)) return null;
-  if (!clip(from.y, dy, rect.top, rect.bottom)) return null;
-  return { x: from.x + dx * t0, y: from.y + dy * t0 };
+  const xs = span(from.x, dx, rect.left, rect.right);
+  const ys = span(from.y, dy, rect.top, rect.bottom);
+  if (!xs || !ys) return null;
+  const t0 = Math.max(0, xs.enter, ys.enter);
+  const t1 = Math.min(1, xs.exit, ys.exit);
+  if (t0 > t1) return null;
+  const axis = xs.enter >= ys.enter ? 'x' : 'y';
+  return { x: from.x + dx * t0, y: from.y + dy * t0, axis };
 }
 
 const MARGIN = 40; // world-space padding used when framing cards on open
@@ -106,7 +116,10 @@ export default class NotesCanvas {
   // way a screen pixel is more or less than one world unit at any zoom
   // level other than 100%.
   setZoom(z) {
-    this.zoom = Math.min(2, Math.max(0.4, z));
+    // Lower bound is well below the PDF pane's (0.5) on purpose: the point
+    // of zooming out here is to see a whole sprawling map of cards at
+    // once, not just read one comfortably, so it needs more headroom.
+    this.zoom = Math.min(2, Math.max(0.15, z));
     this.zoomHost.style.zoom = this.zoom;
     if (this.cb.onZoomChange) this.cb.onZoomChange(this.zoom);
     return this.zoom;
@@ -393,10 +406,14 @@ export default class NotesCanvas {
     const height = (el && el.offsetHeight / this.zoom) || 90;
     const rect = { left: card.x, right: card.x + 200, top: card.y, bottom: card.y + height };
     const entry = segmentRectEntry(from, center, rect);
-    if (!entry) return center;
+    if (!entry) return { x: center.x, y: center.y, axis: 'x' };
     const dx = center.x - from.x, dy = center.y - from.y;
     const len = Math.hypot(dx, dy) || 1;
-    return { x: entry.x - (dx / len) * gap, y: entry.y - (dy / len) * gap };
+    return {
+      x: entry.x - (dx / len) * gap,
+      y: entry.y - (dy / len) * gap,
+      axis: entry.axis, // which pair of edges this landed on — see _addPath
+    };
   }
 
   // A <marker> element (the arrowhead) has to be defined once and referenced
@@ -431,7 +448,22 @@ export default class NotesCanvas {
   _addPath(p1, p2, opts) {
     opts = opts || {};
     const mx = (p1.x + p2.x) / 2, my = (p1.y + p2.y) / 2;
-    const d = 'M ' + p1.x + ' ' + p1.y + ' C ' + mx + ' ' + p1.y + ', ' + mx + ' ' + p2.y + ', ' + p2.x + ' ' + p2.y;
+    // Each control point is placed so the curve approaches its endpoint
+    // along that endpoint's own axis: sharing the *other* point's
+    // coordinate on the axis the entry edge runs along, and the midpoint
+    // on the axis it doesn't. A control point of (mx, p.y) makes the
+    // curve's tangent at `p` purely horizontal (right for a left/right
+    // edge entry); (p.x, my) makes it purely vertical (a top/bottom edge
+    // entry). Getting this wrong doesn't just look a little off — the
+    // marker-end arrowhead orients itself along whatever tangent the
+    // curve actually has there, so a horizontal-only curve produces a
+    // sideways-pointing arrow even when the line visibly runs into the
+    // card from above or below. `axis` defaults to 'x' (the original
+    // always-horizontal behavior) for callers that don't set it, i.e. the
+    // in-progress drag preview, which has no card edge to align to yet.
+    const c1 = (p1.axis === 'y') ? { x: p1.x, y: my } : { x: mx, y: p1.y };
+    const c2 = (p2.axis === 'y') ? { x: p2.x, y: my } : { x: mx, y: p2.y };
+    const d = 'M ' + p1.x + ' ' + p1.y + ' C ' + c1.x + ' ' + c1.y + ', ' + c2.x + ' ' + c2.y + ', ' + p2.x + ' ' + p2.y;
 
     if (opts.link) {
       // A wide, invisible path drawn first (so the thin visible one paints
