@@ -501,13 +501,29 @@ button { font-family: inherit; }
 .canvas {
   position: relative;
   flex: 1;
-  overflow: auto;
+  /* Panning is transform-driven (canvas.js), not native scrolling — the
+     view is a clipped window onto an unbounded plane, so there's no
+     scrollbar and no scroll range to run out of in any direction. */
+  overflow: hidden;
+  cursor: grab;
   background-color: var(--canvas);
   background-image: radial-gradient(var(--canvas-dot) 1.2px, transparent 1.2px);
   background-size: 22px 22px;
+  touch-action: none;
 }
-.canvas-inner { position: relative; width: 1400px; height: 1400px; }
-.canvas svg { position: absolute; top: 0; left: 0; width: 1400px; height: 1400px; pointer-events: none; }
+.canvas.panning { cursor: grabbing; }
+/* No fixed size: cards are positioned absolutely by their own left/top
+   (world coordinates, which may be negative) and this layer is moved as a
+   whole via `transform: translate(...)`, so it never needs to contain its
+   content within an explicit box. */
+.canvas-inner { position: relative; width: 0; height: 0; }
+.canvas svg {
+  position: absolute;
+  top: 0; left: 0;
+  width: 0; height: 0;
+  overflow: visible; /* link paths can run through negative coordinates */
+  pointer-events: none;
+}
 .canvas svg path { fill: none; stroke: var(--accent); stroke-width: 1.6; opacity: 0.75; }
 .canvas svg path.live { stroke: var(--accent-2); stroke-dasharray: 4 4; }
 
