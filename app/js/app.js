@@ -41,6 +41,9 @@ const bodyRowEl = document.getElementById('bodyRow');
 const canvasWrapEl = document.getElementById('canvasWrap');
 const canvasCollapseBtn = document.getElementById('canvasCollapseBtn');
 const canvasExportBtn = document.getElementById('canvasExportBtn');
+const canvasZoomOutBtn = document.getElementById('canvasZoomOut');
+const canvasZoomInBtn = document.getElementById('canvasZoomIn');
+const canvasZoomLevelEl = document.getElementById('canvasZoomLevel');
 const canvasExpandTab = document.getElementById('canvasExpandTab');
 
 // A PDF (currentDocId) and a notes canvas (currentCanvasId) are opened
@@ -79,6 +82,7 @@ const canvas = new NotesCanvas(canvasEl, canvasInnerEl, linkGroupEl, canvasEmpty
   onLinkAdded: (link) => DB.put('links', { ...link, canvasId: currentCanvasId }),
   onLinkChanged: (link) => DB.put('links', { ...link, canvasId: currentCanvasId }),
   onLinkRemoved: (linkId) => DB.delete('links', linkId),
+  onZoomChange: (z) => { canvasZoomLevelEl.textContent = Math.round(z * 100) + '%'; },
 });
 
 const rail = new Rail(railEl, {
@@ -330,6 +334,15 @@ zoomInBtn.addEventListener('click', () => {
 zoomOutBtn.addEventListener('click', () => {
   const z = pdfView.zoomOut();
   zoomLevelEl.textContent = Math.round(z * 100) + '%';
+});
+
+canvasZoomInBtn.addEventListener('click', () => {
+  const z = canvas.zoomIn();
+  canvasZoomLevelEl.textContent = Math.round(z * 100) + '%';
+});
+canvasZoomOutBtn.addEventListener('click', () => {
+  const z = canvas.zoomOut();
+  canvasZoomLevelEl.textContent = Math.round(z * 100) + '%';
 });
 
 // -------- page navigation --------

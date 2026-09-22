@@ -27,6 +27,28 @@ function escapeHtml(s) {
   return escapeAttr(s);
 }
 
+// Where a straight line from `from` to `to` first enters axis-aligned
+// `rect` (Liang-Barsky segment clipping) — used to pull a link's arrowhead
+// back to the target card's actual edge instead of its center, which
+// would otherwise land the whole arrowhead underneath the (opaque, on
+// top) card and make it invisible. Approximates the real cubic curve with
+// its chord, which is accurate enough this close to the endpoint.
+function segmentRectEntry(from, to, rect) {
+  const dx = to.x - from.x, dy = to.y - from.y;
+  let t0 = 0, t1 = 1;
+  const clip = (p, d, lo, hi) => {
+    if (d === 0) return p >= lo && p <= hi;
+    let a = (lo - p) / d, b = (hi - p) / d;
+    if (a > b) { const tmp = a; a = b; b = tmp; }
+    t0 = Math.max(t0, a);
+    t1 = Math.min(t1, b);
+    return t0 <= t1;
+  };
+  if (!clip(from.x, dx, rect.left, rect.right)) return null;
+  if (!clip(from.y, dy, rect.top, rect.bottom)) return null;
+  return { x: from.x + dx * t0, y: from.y + dy * t0 };
+}
+
 const MARGIN = 40; // world-space padding used when framing cards on open
 
 // Preset labels offered in the link picker menu — anything else typed into
@@ -37,6 +59,9 @@ export default class NotesCanvas {
   constructor(canvasEl, innerEl, svgGroupEl, emptyEl, callbacks) {
     this.canvasEl = canvasEl;
     this.inner = innerEl;
+    // Zoom lives on its own wrapper one level out from `inner` (see
+    // setZoom) — .canvas-zoom in the markup, i.e. inner's own parent.
+    this.zoomHost = innerEl.parentElement || innerEl;
     this.svgGroup = svgGroupEl;
     this.emptyEl = emptyEl;
     this.cb = callbacks || {};
@@ -46,6 +71,7 @@ export default class NotesCanvas {
     this.canvasId = null;
     this._saveTimers = new Map();
     this.pan = { x: 0, y: 0 };
+    this.zoom = 1;
     this._menuEl = null;
     this._wirePanning();
     this._ensureMarker();
@@ -56,9 +82,38 @@ export default class NotesCanvas {
     this.cards = cards || [];
     this.links = links || [];
     this._closeLinkMenu();
+    this.setZoom(1);
     this._frameCards();
     this._renderAll();
   }
+
+  // ---------- zoom ----------
+  // Same `zoom` (not `transform: scale`) approach as the PDF pane, and for
+  // the same reason: it participates in layout, so getBoundingClientRect()
+  // on a card or the canvas already reflects it.
+  //
+  // It's applied to `this.zoomHost`, one level OUT from `this.inner` (which
+  // carries the pan transform), rather than to `inner` itself — putting
+  // `zoom` and a `transform` on the very same element leaves it ambiguous
+  // (and inconsistent across engines) whether the transform's px values are
+  // scaled by that element's own zoom or not. On a separate ancestor
+  // there's no ambiguity: `inner`'s translate is authored in local
+  // (pre-zoom) px, exactly the world-coordinate units cards and links
+  // already use, and the wrapper's `zoom` scales the rendered result of
+  // that uniformly. The one thing this means for the rest of the file:
+  // any raw pointer-movement delta (clientX/clientY) has to be divided by
+  // `this.zoom` before being treated as a world-space distance, the same
+  // way a screen pixel is more or less than one world unit at any zoom
+  // level other than 100%.
+  setZoom(z) {
+    this.zoom = Math.min(2, Math.max(0.4, z));
+    this.zoomHost.style.zoom = this.zoom;
+    if (this.cb.onZoomChange) this.cb.onZoomChange(this.zoom);
+    return this.zoom;
+  }
+  zoomIn() { return this.setZoom(Math.round((this.zoom + 0.15) * 100) / 100); }
+  zoomOut() { return this.setZoom(Math.round((this.zoom - 0.15) * 100) / 100); }
+  zoomReset() { return this.setZoom(1); }
 
   // Positions the view so whatever's already on the canvas is visible when
   // it's opened — there's no scrollbar to land somewhere sensible on its
@@ -76,10 +131,12 @@ export default class NotesCanvas {
     this.pan.y = y;
     this.inner.style.transform = 'translate(' + x + 'px, ' + y + 'px)';
     // Keeps the dotted background (painted on the viewport, not the
-    // panned layer) moving in lockstep so it still reads as one
-    // continuous plane instead of a patch that stays put while content
-    // slides under it.
-    this.canvasEl.style.backgroundPosition = x + 'px ' + y + 'px';
+    // panned layer, so it never scales with zoom) moving in lockstep so it
+    // still reads as one continuous plane instead of a patch that stays
+    // put while content slides under it. `x`/`y` are world (pre-zoom) px,
+    // but this layer isn't zoomed, so they're scaled up to real screen px
+    // here to match how far the (zoomed) content actually just moved.
+    this.canvasEl.style.backgroundPosition = (x * this.zoom) + 'px ' + (y * this.zoom) + 'px';
   }
 
   // Drag on empty canvas background (not a card, not a link thread) pans
@@ -108,7 +165,12 @@ export default class NotesCanvas {
     };
     const onMove = (e) => {
       if (!dragging) return;
-      this._setPan(startPanX + (e.clientX - startX), startPanY + (e.clientY - startY));
+      // Screen-px deltas, converted to the pan transform's local (pre-zoom)
+      // px so the content tracks the cursor 1:1 at any zoom level.
+      this._setPan(
+        startPanX + (e.clientX - startX) / this.zoom,
+        startPanY + (e.clientY - startY) / this.zoom
+      );
     };
     const onUp = () => {
       dragging = false;
@@ -228,7 +290,8 @@ export default class NotesCanvas {
     });
     el.addEventListener('pointermove', (e) => {
       if (!dragging) return;
-      const dx = e.clientX - startX, dy = e.clientY - startY;
+      // Same screen-to-world conversion as panning above.
+      const dx = (e.clientX - startX) / this.zoom, dy = (e.clientY - startY) / this.zoom;
       if (Math.abs(dx) + Math.abs(dy) > 3) moved = true;
       // No lower bound — the canvas is infinite in every direction, so a
       // card is free to move into negative world coordinates too.
@@ -303,6 +366,31 @@ export default class NotesCanvas {
     return { x: c.x + 100, y: c.y + 38 };
   }
 
+  // The point a link line should actually start/end at: just outside the
+  // given card's edge (along the line toward `from`, the other end of the
+  // link) rather than the card's center. A path drawn all the way to
+  // center is entirely covered by the opaque card on top of it — for the
+  // target end that means the arrowhead (drawn right at that point) is
+  // invisible, not just "running underneath" the way the old plain-line
+  // version read; for the source end it means a hit-path midpoint can
+  // land back inside the source card on two cards placed close together,
+  // which is also where a click ought to land on empty canvas, not on a
+  // card. `gap` is extra clearance past the edge — 0 for the plain start
+  // point, enough to clear the marker's own ~11px length for the end.
+  _edgePoint(from, card, gap) {
+    const center = this._cardCenter(card);
+    const el = this.cardEls.get(card.id);
+    // offsetHeight is the zoomed (rendered) height — convert back to the
+    // world units `card.x`/`card.y` and everything else here use.
+    const height = (el && el.offsetHeight / this.zoom) || 90;
+    const rect = { left: card.x, right: card.x + 200, top: card.y, bottom: card.y + height };
+    const entry = segmentRectEntry(from, center, rect);
+    if (!entry) return center;
+    const dx = center.x - from.x, dy = center.y - from.y;
+    const len = Math.hypot(dx, dy) || 1;
+    return { x: entry.x - (dx / len) * gap, y: entry.y - (dy / len) * gap };
+  }
+
   // A <marker> element (the arrowhead) has to be defined once and referenced
   // by id from each path's marker-end — SVG doesn't let you inline one.
   _ensureMarker() {
@@ -323,7 +411,11 @@ export default class NotesCanvas {
       const a = this.cards.find((c) => c.id === link.a);
       const b = this.cards.find((c) => c.id === link.b);
       if (!a || !b) return;
-      this._addPath(this._cardCenter(a), this._cardCenter(b), { link });
+      const centerA = this._cardCenter(a);
+      const centerB = this._cardCenter(b);
+      const p1 = this._edgePoint(centerB, a, 2);
+      const p2 = this._edgePoint(centerA, b, 8);
+      this._addPath(p1, p2, { link });
     });
     if (tempLine) this._addPath(tempLine.from, tempLine.to, { live: true });
   }
@@ -380,7 +472,7 @@ export default class NotesCanvas {
       // pointer stream outright when they collide.
       ev.preventDefault();
       const rect = this.inner.getBoundingClientRect();
-      const to = { x: ev.clientX - rect.left, y: ev.clientY - rect.top };
+      const to = { x: (ev.clientX - rect.left) / this.zoom, y: (ev.clientY - rect.top) / this.zoom };
       this._drawLinks({ from: fromCenter, to });
     };
     const finish = (ev) => {

@@ -317,7 +317,15 @@ export default class PdfView {
   _scrollToMatch(i) {
     const m = this._searchMatches[i];
     if (!m) return;
-    m.span.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // Not scrollIntoView: with overflow-x set on this pane (for wide pages
+    // at high zoom — see setZoom above), its default `inline: 'nearest'`
+    // can also scroll horizontally to bring a match into view, visibly
+    // shifting the page sideways on every Enter press. Scroll vertically
+    // only, by exactly the offset needed, and leave scrollLeft alone.
+    const hostRect = this.scrollHost.getBoundingClientRect();
+    const spanRect = m.span.getBoundingClientRect();
+    const delta = (spanRect.top + spanRect.height / 2) - (hostRect.top + hostRect.height / 2);
+    this.scrollHost.scrollBy({ top: delta, behavior: 'smooth' });
   }
 
   // ---------- marquee selection ----------

@@ -84,6 +84,11 @@
           <h2 id="canvasTitle">Notes</h2>
           <div class="canvas-head-right">
             <div class="hint">drag cards · drag the circle to link · click a card to jump back</div>
+            <div class="canvas-zoom-controls">
+              <button class="tb-btn small" id="canvasZoomOut" title="Zoom out">−</button>
+              <span class="tb-zoom" id="canvasZoomLevel">100%</span>
+              <button class="tb-btn small" id="canvasZoomIn" title="Zoom in">+</button>
+            </div>
             <button class="canvas-export" id="canvasExportBtn" title="Export link map as Markdown">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
             </button>
@@ -93,9 +98,11 @@
           </div>
         </div>
         <div class="canvas" id="canvas">
-          <div class="canvas-inner" id="canvasInner">
-            <div class="canvas-empty" id="canvasEmpty">Select text in a PDF and choose "Pull to canvas." Excerpts from any of your PDFs can live on this same canvas, each linked back to its exact page.</div>
-            <svg><g id="linkGroup"></g></svg>
+          <div class="canvas-zoom" id="canvasZoom">
+            <div class="canvas-inner" id="canvasInner">
+              <div class="canvas-empty" id="canvasEmpty">Select text in a PDF and choose "Pull to canvas." Excerpts from any of your PDFs can live on this same canvas, each linked back to its exact page.</div>
+              <svg><g id="linkGroup"></g></svg>
+            </div>
           </div>
         </div>
       </section>

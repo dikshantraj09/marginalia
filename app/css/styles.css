@@ -500,6 +500,8 @@ button { font-family: inherit; }
 .canvas-head h2 { font-family: 'Fraunces', serif; font-weight: 500; font-size: 15px; margin: 0; flex-shrink: 0; }
 .canvas-head-right { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1 1 auto; justify-content: flex-end; }
 .canvas-head .hint { font-size: 11px; color: var(--ink-faint); text-align: right; min-width: 0; }
+.canvas-zoom-controls { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+.canvas-zoom-controls .tb-zoom { width: 34px; }
 .canvas-collapse {
   flex-shrink: 0;
   display: flex;
@@ -567,6 +569,12 @@ button { font-family: inherit; }
   touch-action: none;
 }
 .canvas.panning { cursor: grabbing; }
+/* Zoom lives on its own wrapper, one level out from the pan transform
+   (canvas.js keeps them separate on purpose — see the comment on
+   `setZoom` there). Zero-size like `.canvas-inner`, purely a positioning
+   anchor: `zoom` scales its rendering, not its own box, so it doesn't
+   need dimensions of its own either. */
+.canvas-zoom { position: relative; width: 0; height: 0; }
 /* No fixed size: cards are positioned absolutely by their own left/top
    (world coordinates, which may be negative) and this layer is moved as a
    whole via `transform: translate(...)`, so it never needs to contain its
@@ -828,4 +836,5 @@ button { font-family: inherit; }
   .reading { border-right: none; border-bottom: 1px solid var(--rule); flex: 1 1 auto; max-height: 50vh; }
   .canvas-wrap { flex: 1 1 auto; }
   .doc-title { display: none; }
+  .canvas-head .hint { display: none; }
 }
