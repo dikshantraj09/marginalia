@@ -280,13 +280,23 @@ export default class NotesCanvas {
   _startLink(fromCard, e) {
     const fromCenter = this._cardCenter(fromCard);
     const onMove = (ev) => {
+      // Same reasoning as the PDF marquee drag: without this, the browser
+      // can start its own native drag/selection over whatever the thread
+      // happens to cross (e.g. the reading pane just to the left of the
+      // canvas) at the same time as this custom gesture, and cancel the
+      // pointer stream outright when they collide.
+      ev.preventDefault();
       const rect = this.inner.getBoundingClientRect();
       const to = { x: ev.clientX - rect.left, y: ev.clientY - rect.top };
       this._drawLinks({ from: fromCenter, to });
     };
-    const onUp = (ev) => {
+    const finish = (ev) => {
       window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointerup', finish);
+      window.removeEventListener('pointercancel', finish);
+      // A pointercancel carries no useful coordinates — just drop the
+      // in-progress thread rather than guessing a drop target from (0,0).
+      if (ev.type === 'pointercancel') { this._drawLinks(); return; }
       const target = document.elementFromPoint(ev.clientX, ev.clientY);
       const targetCard = target ? target.closest('.card') : null;
       if (targetCard && targetCard.dataset.id !== fromCard.id) {
@@ -301,8 +311,13 @@ export default class NotesCanvas {
       }
       this._drawLinks();
     };
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointermove', onMove, { passive: false });
+    window.addEventListener('pointerup', finish);
+    // Without this, a browser-cancelled pointer stream (see onMove above)
+    // would leave these window listeners attached forever — every future
+    // mouse move anywhere in the app would keep redrawing a phantom
+    // "in-progress" link thread from the original card.
+    window.addEventListener('pointercancel', finish);
     e.stopPropagation();
   }
 }

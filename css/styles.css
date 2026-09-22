@@ -568,8 +568,17 @@ button { font-family: inherit; }
 .card .meta { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; }
 .card .page-tag { font-size: 10.5px; color: var(--accent); font-weight: 600; }
 .card .card-actions { display: flex; align-items: center; gap: 6px; }
-.card .link-nub { width: 13px; height: 13px; border-radius: 50%; background: var(--paper); border: 1.5px solid var(--ink-faint); cursor: crosshair; }
+.card .link-nub { position: relative; width: 13px; height: 13px; border-radius: 50%; background: var(--paper); border: 1.5px solid var(--ink-faint); cursor: crosshair; }
 .card .link-nub:hover { border-color: var(--accent-2); background: var(--accent-2-soft); }
+/* Invisible larger hit area around the small visible circle — a pointer
+   event anywhere in here still reports the real .link-nub as its target
+   (pseudo-elements aren't separate event targets), so this makes the drag
+   noticeably easier to start without changing how the nub looks. */
+.card .link-nub::before {
+  content: '';
+  position: absolute;
+  inset: -7px;
+}
 .card .del { font-size: 13px; color: var(--ink-faint); cursor: pointer; line-height: 1; }
 .card .del:hover { color: var(--danger); }
 
