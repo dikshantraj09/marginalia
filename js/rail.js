@@ -24,6 +24,7 @@ export default class Rail {
     this.pdfGroupEl = railEl.querySelector('#pdfGroup');
     this.notesGroupEl = railEl.querySelector('#notesGroup');
     railEl.querySelector('#addPdfFolder').addEventListener('click', () => this._createFolder(null, 'pdf'));
+    railEl.querySelector('#addNotesFolder').addEventListener('click', () => this._createFolder(null, 'note'));
     railEl.querySelector('#addCanvas').addEventListener('click', () => this._createCanvas(null));
   }
 

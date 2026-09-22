@@ -8,6 +8,24 @@ const pdfPagesEl = document.getElementById('pdfPages');
 const readingEmptyEl = document.getElementById('readingEmpty');
 const pullBtn = document.getElementById('pullBtn');
 const docTitleEl = document.getElementById('docTitle');
+const pdfToolbar = document.getElementById('pdfToolbar');
+const tocToggle = document.getElementById('tocToggle');
+const tocClose = document.getElementById('tocClose');
+const tocBackdrop = document.getElementById('tocBackdrop');
+const tocPanel = document.getElementById('tocPanel');
+const tocListEl = document.getElementById('tocList');
+const zoomOutBtn = document.getElementById('zoomOut');
+const zoomInBtn = document.getElementById('zoomIn');
+const zoomLevelEl = document.getElementById('zoomLevel');
+const prevPageBtn = document.getElementById('prevPage');
+const nextPageBtn = document.getElementById('nextPage');
+const pageInput = document.getElementById('pageInput');
+const pageCountEl = document.getElementById('pageCount');
+const searchInput = document.getElementById('searchInput');
+const searchCountEl = document.getElementById('searchCount');
+const searchPrevBtn = document.getElementById('searchPrev');
+const searchNextBtn = document.getElementById('searchNext');
+const searchCloseBtn = document.getElementById('searchClose');
 const canvasTitleEl = document.getElementById('canvasTitle');
 const canvasEl = document.getElementById('canvas');
 const canvasInnerEl = document.getElementById('canvasInner');
@@ -32,6 +50,12 @@ const pdfView = new PdfView(
   () => {}, // pullBtn positioning is handled internally by PdfView
   (card) => pdfView.jumpToCard(card) // clicking a highlight in the page just flashes it
 );
+pdfView.onPageChange = (pageNum) => {
+  if (document.activeElement !== pageInput) pageInput.value = pageNum;
+};
+pdfView.onSearchResults = (active, total) => {
+  searchCountEl.textContent = total ? active + ' / ' + total : (searchInput.value.trim() ? '0 / 0' : '');
+};
 
 const canvas = new NotesCanvas(canvasEl, canvasInnerEl, linkGroupEl, canvasEmptyEl, {
   onCardAdded: (card) => DB.put('cards', card),
@@ -83,8 +107,17 @@ async function openDocument(docId) {
   try {
     await pdfView.load(buffer);
     await refreshHighlights();
+    pdfToolbar.classList.add('visible');
+    const count = pdfView.getPageCount();
+    pageCountEl.textContent = count;
+    pageInput.value = 1;
+    zoomLevelEl.textContent = '100%';
+    searchInput.value = '';
+    searchCountEl.textContent = '';
+    await populateToc();
   } catch (err) {
     // pdfView already shows an inline error in the reading pane
+    pdfToolbar.classList.remove('visible');
   }
   if (window.innerWidth <= 900) railEl.classList.remove('open');
 }
@@ -95,6 +128,8 @@ function closeDocument() {
   pdfPagesEl.innerHTML = '';
   readingEmptyEl.style.display = 'flex';
   rail.setActiveDoc(null);
+  pdfToolbar.classList.remove('visible');
+  closeToc();
 }
 
 async function openCanvas(canvasId) {
@@ -203,6 +238,97 @@ themeToggle.addEventListener('click', () => {
   const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
   applyTheme(next);
   try { localStorage.setItem('marginalia-theme', next); } catch (err) { /* ignore */ }
+});
+
+// -------- table of contents --------
+
+async function populateToc() {
+  const outline = await pdfView.getOutline();
+  tocListEl.innerHTML = '';
+  if (!outline.length) {
+    tocListEl.innerHTML = '<div class="toc-empty">This PDF has no table of contents.</div>';
+    return;
+  }
+  const renderItems = async (items, depth) => {
+    for (const item of items) {
+      const el = document.createElement('div');
+      el.className = 'toc-item';
+      el.style.paddingLeft = (8 + depth * 14) + 'px';
+      el.textContent = item.title || 'Untitled';
+      el.addEventListener('click', async () => {
+        const pageNum = await pdfView.resolveDestPage(item.dest);
+        if (pageNum) pdfView.goToPage(pageNum);
+        closeToc();
+      });
+      tocListEl.appendChild(el);
+      if (item.items && item.items.length) await renderItems(item.items, depth + 1);
+    }
+  };
+  await renderItems(outline, 0);
+}
+
+function openToc() {
+  tocPanel.classList.add('open');
+  tocBackdrop.classList.add('open');
+}
+function closeToc() {
+  tocPanel.classList.remove('open');
+  tocBackdrop.classList.remove('open');
+}
+tocToggle.addEventListener('click', () => {
+  tocPanel.classList.contains('open') ? closeToc() : openToc();
+});
+tocClose.addEventListener('click', closeToc);
+tocBackdrop.addEventListener('click', closeToc);
+
+// -------- zoom --------
+
+zoomInBtn.addEventListener('click', () => {
+  const z = pdfView.zoomIn();
+  zoomLevelEl.textContent = Math.round(z * 100) + '%';
+});
+zoomOutBtn.addEventListener('click', () => {
+  const z = pdfView.zoomOut();
+  zoomLevelEl.textContent = Math.round(z * 100) + '%';
+});
+
+// -------- page navigation --------
+
+prevPageBtn.addEventListener('click', () => {
+  const n = Math.max(1, (parseInt(pageInput.value, 10) || 1) - 1);
+  pdfView.goToPage(n);
+});
+nextPageBtn.addEventListener('click', () => {
+  const n = Math.min(pdfView.getPageCount(), (parseInt(pageInput.value, 10) || 1) + 1);
+  pdfView.goToPage(n);
+});
+pageInput.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter') return;
+  const n = parseInt(pageInput.value, 10);
+  if (n >= 1 && n <= pdfView.getPageCount()) pdfView.goToPage(n);
+  pageInput.blur();
+});
+pageInput.addEventListener('blur', () => {
+  // if left invalid/empty, snap back to whatever page is actually showing
+});
+
+// -------- search --------
+
+let searchDebounce = null;
+searchInput.addEventListener('input', () => {
+  clearTimeout(searchDebounce);
+  searchDebounce = setTimeout(() => pdfView.search(searchInput.value), 200);
+});
+searchInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); e.shiftKey ? pdfView.prevMatch() : pdfView.nextMatch(); }
+  if (e.key === 'Escape') { searchInput.value = ''; pdfView.clearSearch(); searchCountEl.textContent = ''; searchInput.blur(); }
+});
+searchPrevBtn.addEventListener('click', () => pdfView.prevMatch());
+searchNextBtn.addEventListener('click', () => pdfView.nextMatch());
+searchCloseBtn.addEventListener('click', () => {
+  searchInput.value = '';
+  pdfView.clearSearch();
+  searchCountEl.textContent = '';
 });
 
 // -------- boot --------

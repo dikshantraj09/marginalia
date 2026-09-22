@@ -48,25 +48,48 @@ const SCROLL_INTENT_RATIO = 2.2;
 export default class PdfView {
   constructor(container, pullBtn, onSelectionReady, onHighlightClick) {
     this.container = container; // holds rendered pages — cleared/rebuilt on each load()
-    this.scrollHost = container.closest('.reading') || container.parentElement; // scrollable ancestor, used for measurement
+    this.scrollHost = container.closest('.reading-scroll') || container.closest('.reading') || container.parentElement; // scrollable ancestor, used for measurement
     this.pullBtn = pullBtn;
     this.onSelectionReady = onSelectionReady;
     this.onHighlightClick = onHighlightClick;
+    this.onPageChange = null; // (pageNum) => void — fired as the visible page changes while scrolling
+    this.onSearchResults = null; // (activeIndex1Based, total) => void
     this.pageWraps = new Map(); // pageNum -> wrap el
     this.pdf = null;
     this._selection = null;
+    this.zoom = 1;
+    this._searchMatches = [];
+    this._searchIndex = -1;
 
     this._drag = null; // active marquee gesture state, or null
     this.container.addEventListener('pointerdown', (e) => this._onPointerDown(e));
     this.container.addEventListener('pointermove', (e) => this._onPointerMove(e), { passive: false });
     window.addEventListener('pointerup', (e) => this._onPointerUp(e));
-    window.addEventListener('pointercancel', () => this._cancelDrag());
+    // The browser can cancel an in-flight pointer stream mid-gesture (seen in
+    // practice right after a page is freshly re-rendered while the notes
+    // panel has narrowed the reading column) with no pointerup ever firing.
+    // Treating that as a silent abort would make a drag that was otherwise
+    // going fine just do nothing — instead we finish the gesture with
+    // whatever rectangle was tracked up to that point, same as a real
+    // pointerup, so the person still gets a selection instead of nothing.
+    window.addEventListener('pointercancel', (e) => this._onPointerUp(e));
+
+    this._pageObserver = new IntersectionObserver(
+      (entries) => this._onPageIntersect(entries),
+      { root: this.scrollHost, threshold: [0, 0.25, 0.5, 0.75, 1] }
+    );
+    this._visibility = new Map(); // pageNum -> intersection ratio, used to pick the "current" page
   }
 
   async load(arrayBuffer) {
     this.container.innerHTML = '';
     this.pageWraps.clear();
+    this._visibility.clear();
+    this._pageObserver.disconnect();
     this._cancelDrag();
+    this.clearSearch();
+    this.zoom = 1;
+    this.container.style.zoom = 1;
     try {
       const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
       this.pdf = await loadingTask.promise;
@@ -143,7 +166,158 @@ export default class PdfView {
     });
     await textLayer.render();
 
-    this.pageWraps.set(pageNum, { wrap, viewport: cssViewport, highlightLayer, marqueeEl, page });
+    const searchLayer = document.createElement('div');
+    searchLayer.className = 'search-layer';
+    wrap.appendChild(searchLayer);
+
+    this.pageWraps.set(pageNum, { wrap, viewport: cssViewport, highlightLayer, marqueeEl, searchLayer, page });
+    this._pageObserver.observe(wrap);
+  }
+
+  _onPageIntersect(entries) {
+    for (const entry of entries) {
+      const pageNum = parseInt(entry.target.dataset.page, 10);
+      this._visibility.set(pageNum, entry.isIntersecting ? entry.intersectionRatio : 0);
+    }
+    let bestPage = null;
+    let bestRatio = 0;
+    for (const [pageNum, ratio] of this._visibility) {
+      if (ratio > bestRatio) { bestRatio = ratio; bestPage = pageNum; }
+    }
+    if (bestPage && this.onPageChange) this.onPageChange(bestPage);
+  }
+
+  getPageCount() {
+    return this.pdf ? this.pdf.numPages : 0;
+  }
+
+  goToPage(pageNum) {
+    const info = this.pageWraps.get(pageNum);
+    if (!info) return;
+    info.wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  // ---------- zoom ----------
+  // Applied via CSS `zoom` on the whole page container: it participates in
+  // layout (so scrolling still works correctly, unlike `transform: scale`)
+  // and getBoundingClientRect()/pointer coordinates already account for it,
+  // so nothing else here — marquee selection, highlight rects — needs to
+  // know the zoom level at all.
+
+  setZoom(z) {
+    this.zoom = Math.min(2.5, Math.max(0.5, z));
+    this.container.style.zoom = this.zoom;
+    // Zooming in can widen the page past the pane, and jumping to a search
+    // match while zoomed can then scroll it sideways to bring a wide line
+    // into view. That horizontal offset doesn't self-correct when zooming
+    // back out — it just gets clamped to whatever's still in range at the
+    // new (narrower) width — so without this the page can end up
+    // permanently shifted right even at 100% zoom. Simplest fix: every zoom
+    // change re-centers horizontally instead of trying to preserve a scroll
+    // position computed for a different content width.
+    this.scrollHost.scrollLeft = 0;
+    return this.zoom;
+  }
+  zoomIn() { return this.setZoom(Math.round((this.zoom + 0.15) * 100) / 100); }
+  zoomOut() { return this.setZoom(Math.round((this.zoom - 0.15) * 100) / 100); }
+  zoomReset() { return this.setZoom(1); }
+
+  // ---------- table of contents ----------
+
+  async getOutline() {
+    if (!this.pdf) return [];
+    try {
+      return (await this.pdf.getOutline()) || [];
+    } catch (err) {
+      return [];
+    }
+  }
+
+  // A bookmark's `dest` is either a named destination (string, needs a
+  // lookup) or an already-explicit destination array whose first element is
+  // a page ref.
+  async resolveDestPage(dest) {
+    if (!this.pdf || !dest) return null;
+    try {
+      const explicitDest = typeof dest === 'string' ? await this.pdf.getDestination(dest) : dest;
+      if (!explicitDest || !explicitDest[0]) return null;
+      const pageIndex = await this.pdf.getPageIndex(explicitDest[0]);
+      return pageIndex + 1;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  // ---------- search ----------
+  // Matches within a single text span (a span is usually one line of one
+  // run) rather than reconstructing exact substring geometry — a match
+  // highlights the whole run it was found in. Simple, and accurate enough
+  // to find and jump to a phrase.
+
+  search(term) {
+    this.clearSearch();
+    if (!term || !term.trim()) {
+      if (this.onSearchResults) this.onSearchResults(0, 0);
+      return;
+    }
+    const lower = term.trim().toLowerCase();
+    for (const [pageNum, info] of this.pageWraps) {
+      const spans = info.wrap.querySelectorAll('.text-layer span');
+      spans.forEach((span) => {
+        if (span.textContent.toLowerCase().includes(lower)) {
+          this._searchMatches.push({ page: pageNum, span });
+        }
+      });
+    }
+    this._searchIndex = this._searchMatches.length ? 0 : -1;
+    this._renderSearchHighlights();
+    if (this.onSearchResults) this.onSearchResults(this._searchMatches.length ? 1 : 0, this._searchMatches.length);
+    if (this._searchMatches.length) this._scrollToMatch(0);
+  }
+
+  nextMatch() {
+    if (!this._searchMatches.length) return;
+    this._searchIndex = (this._searchIndex + 1) % this._searchMatches.length;
+    this._renderSearchHighlights();
+    this._scrollToMatch(this._searchIndex);
+    if (this.onSearchResults) this.onSearchResults(this._searchIndex + 1, this._searchMatches.length);
+  }
+
+  prevMatch() {
+    if (!this._searchMatches.length) return;
+    this._searchIndex = (this._searchIndex - 1 + this._searchMatches.length) % this._searchMatches.length;
+    this._renderSearchHighlights();
+    this._scrollToMatch(this._searchIndex);
+    if (this.onSearchResults) this.onSearchResults(this._searchIndex + 1, this._searchMatches.length);
+  }
+
+  clearSearch() {
+    this._searchMatches = [];
+    this._searchIndex = -1;
+    for (const [, info] of this.pageWraps) info.searchLayer.innerHTML = '';
+  }
+
+  _renderSearchHighlights() {
+    for (const [, info] of this.pageWraps) info.searchLayer.innerHTML = '';
+    this._searchMatches.forEach((m, i) => {
+      const info = this.pageWraps.get(m.page);
+      if (!info) return;
+      const wrapRect = info.wrap.getBoundingClientRect();
+      const r = m.span.getBoundingClientRect();
+      const el = document.createElement('div');
+      el.className = 'search-hit' + (i === this._searchIndex ? ' active' : '');
+      el.style.left = (((r.left - wrapRect.left) / wrapRect.width) * 100) + '%';
+      el.style.top = (((r.top - wrapRect.top) / wrapRect.height) * 100) + '%';
+      el.style.width = ((r.width / wrapRect.width) * 100) + '%';
+      el.style.height = ((r.height / wrapRect.height) * 100) + '%';
+      info.searchLayer.appendChild(el);
+    });
+  }
+
+  _scrollToMatch(i) {
+    const m = this._searchMatches[i];
+    if (!m) return;
+    m.span.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
   // ---------- marquee selection ----------
@@ -154,6 +328,16 @@ export default class PdfView {
     if (e.target.closest('.pull-btn')) return;
     const pageWrap = e.target.closest('.pdf-page-wrap');
     if (!pageWrap || !this.container.contains(pageWrap)) return;
+
+    // Without this, a fast or wide drag that carries the pointer off the
+    // rendered page (into the pane's margin, past the page edge, or briefly
+    // over a sibling element) stops delivering move/up events to this
+    // container the instant the pointer leaves it — the drag would just
+    // silently stop tracking, which reads as the selection "getting stuck."
+    // Capturing to the element that received pointerdown keeps every
+    // subsequent event for this gesture routed here regardless of where the
+    // pointer physically travels.
+    try { e.target.setPointerCapture(e.pointerId); } catch (err) { /* not critical if unsupported */ }
 
     this._drag = {
       pointerId: e.pointerId,

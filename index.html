@@ -27,19 +27,56 @@
           <div class="rail-tree" id="pdfGroup"></div>
         </div>
         <div class="rail-group notes">
-          <h3>Notes <span class="add" id="addCanvas" title="New notes canvas">＋</span></h3>
+          <h3>Notes
+            <span class="h3-actions">
+              <span class="add" id="addNotesFolder" title="New folder">🗀+</span>
+              <span class="add" id="addCanvas" title="New notes canvas">✎+</span>
+            </span>
+          </h3>
           <div class="rail-tree" id="notesGroup"></div>
         </div>
       </nav>
 
       <main class="reading" id="reading">
-        <div class="reading-empty" id="readingEmpty">
-          <div class="big">Nothing open yet</div>
-          <div>Import a PDF to start reading and pulling out excerpts.</div>
-          <button id="emptyImportBtn">＋ Import PDF</button>
+        <div class="pdf-toolbar" id="pdfToolbar">
+          <button class="tb-btn" id="tocToggle" title="Table of contents">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+          </button>
+          <div class="tb-sep"></div>
+          <button class="tb-btn" id="zoomOut" title="Zoom out">−</button>
+          <span class="tb-zoom" id="zoomLevel">100%</span>
+          <button class="tb-btn" id="zoomIn" title="Zoom in">+</button>
+          <div class="tb-sep"></div>
+          <button class="tb-btn" id="prevPage" title="Previous page">‹</button>
+          <input class="tb-page-input" id="pageInput" type="text" inputmode="numeric" value="–" />
+          <span class="tb-page-count">/ <span id="pageCount">–</span></span>
+          <button class="tb-btn" id="nextPage" title="Next page">›</button>
+          <div class="tb-sep"></div>
+          <div class="tb-search" id="tbSearch">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+            <input id="searchInput" type="text" placeholder="Search this PDF…" />
+            <span class="tb-search-count" id="searchCount"></span>
+            <button class="tb-btn small" id="searchPrev" title="Previous match">‹</button>
+            <button class="tb-btn small" id="searchNext" title="Next match">›</button>
+            <button class="tb-btn small" id="searchClose" title="Clear search">✕</button>
+          </div>
         </div>
-        <div id="pdfPages"></div>
-        <button class="pull-btn" id="pullBtn">＋ Pull to canvas</button>
+
+        <div class="toc-backdrop" id="tocBackdrop"></div>
+        <aside class="toc-panel" id="tocPanel">
+          <div class="toc-head">Contents <button id="tocClose" title="Close">✕</button></div>
+          <div class="toc-list" id="tocList"></div>
+        </aside>
+
+        <div class="reading-scroll" id="readingScroll">
+          <div class="reading-empty" id="readingEmpty">
+            <div class="big">Nothing open yet</div>
+            <div>Import a PDF to start reading and pulling out excerpts.</div>
+            <button id="emptyImportBtn">＋ Import PDF</button>
+          </div>
+          <div id="pdfPages"></div>
+          <button class="pull-btn" id="pullBtn">＋ Pull to canvas</button>
+        </div>
       </main>
 
       <section class="canvas-wrap">
