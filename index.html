@@ -20,7 +20,7 @@
       <input type="file" id="fileInput" accept="application/pdf" style="display:none" />
     </div>
 
-    <div class="body-row">
+    <div class="body-row" id="bodyRow">
       <nav class="rail" id="rail">
         <div class="rail-group">
           <h3>PDFs <span class="add" id="addPdfFolder" title="New folder">＋</span></h3>
@@ -79,10 +79,15 @@
         </div>
       </main>
 
-      <section class="canvas-wrap">
+      <section class="canvas-wrap" id="canvasWrap">
         <div class="canvas-head">
           <h2 id="canvasTitle">Notes</h2>
-          <div class="hint">drag cards · drag the circle to link · click a card to jump back</div>
+          <div class="canvas-head-right">
+            <div class="hint">drag cards · drag the circle to link · click a card to jump back</div>
+            <button class="canvas-collapse" id="canvasCollapseBtn" title="Hide notes — just read">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>
+            </button>
+          </div>
         </div>
         <div class="canvas" id="canvas">
           <div class="canvas-inner" id="canvasInner">
@@ -91,6 +96,10 @@
           </div>
         </div>
       </section>
+      <button class="canvas-expand-tab" id="canvasExpandTab" title="Show notes">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 6l-6 6 6 6"/></svg>
+        Notes
+      </button>
     </div>
   </div>
 

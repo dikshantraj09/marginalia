@@ -37,6 +37,10 @@ const importBtn = document.getElementById('importBtn');
 const emptyImportBtn = document.getElementById('emptyImportBtn');
 const fileInput = document.getElementById('fileInput');
 const themeToggle = document.getElementById('themeToggle');
+const bodyRowEl = document.getElementById('bodyRow');
+const canvasWrapEl = document.getElementById('canvasWrap');
+const canvasCollapseBtn = document.getElementById('canvasCollapseBtn');
+const canvasExpandTab = document.getElementById('canvasExpandTab');
 
 // A PDF (currentDocId) and a notes canvas (currentCanvasId) are opened
 // independently — a canvas can hold excerpts pulled from more than one PDF,
@@ -222,6 +226,21 @@ fileInput.addEventListener('change', () => {
 });
 
 railToggle.addEventListener('click', () => railEl.classList.toggle('open'));
+
+// -------- notes panel collapse (a "just read" mode) --------
+
+function setNotesCollapsed(collapsed) {
+  canvasWrapEl.classList.toggle('collapsed', collapsed);
+  bodyRowEl.classList.toggle('notes-collapsed', collapsed);
+  try { localStorage.setItem('marginalia-notes-collapsed', collapsed ? '1' : '0'); } catch (err) { /* ignore */ }
+}
+(function initNotesCollapsed() {
+  let saved = null;
+  try { saved = localStorage.getItem('marginalia-notes-collapsed'); } catch (err) { /* ignore */ }
+  if (saved === '1') setNotesCollapsed(true);
+})();
+canvasCollapseBtn.addEventListener('click', () => setNotesCollapsed(true));
+canvasExpandTab.addEventListener('click', () => setNotesCollapsed(false));
 
 // -------- theme --------
 

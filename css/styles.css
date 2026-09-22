@@ -126,7 +126,7 @@ button { font-family: inherit; }
 }
 
 /* ---------- layout ---------- */
-.body-row { display: flex; flex: 1; min-height: 0; }
+.body-row { display: flex; flex: 1; min-height: 0; position: relative; }
 
 /* ---------- folder rail ---------- */
 .rail {
@@ -486,7 +486,8 @@ button { font-family: inherit; }
 .pull-btn:hover { background: var(--accent); color: var(--ink); }
 
 /* ---------- canvas ---------- */
-.canvas-wrap { flex: 1 1 52%; min-width: 0; display: flex; flex-direction: column; }
+.canvas-wrap { flex: 1 1 52%; min-width: 0; display: flex; flex-direction: column; transition: flex-basis .16s ease; }
+.canvas-wrap.collapsed { flex: 0 0 0; min-width: 0; overflow: hidden; }
 .canvas-head {
   display: flex;
   align-items: center;
@@ -496,8 +497,48 @@ button { font-family: inherit; }
   flex-shrink: 0;
   gap: 10px;
 }
-.canvas-head h2 { font-family: 'Fraunces', serif; font-weight: 500; font-size: 15px; margin: 0; }
-.canvas-head .hint { font-size: 11px; color: var(--ink-faint); text-align: right; }
+.canvas-head h2 { font-family: 'Fraunces', serif; font-weight: 500; font-size: 15px; margin: 0; flex-shrink: 0; }
+.canvas-head-right { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1 1 auto; justify-content: flex-end; }
+.canvas-head .hint { font-size: 11px; color: var(--ink-faint); text-align: right; min-width: 0; }
+.canvas-collapse {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--rule);
+  background: none;
+  border-radius: 6px;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.canvas-collapse:hover { color: var(--ink); border-color: var(--ink-faint); }
+
+/* Slim tab that reopens the notes panel once it's collapsed — lives
+   outside .canvas-wrap so it stays visible while that panel is hidden. */
+.canvas-expand-tab {
+  display: none;
+  position: absolute;
+  top: 50%; right: 0;
+  transform: translateY(-50%);
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-right: none;
+  border-radius: 8px 0 0 8px;
+  padding: 14px 7px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink-soft);
+  cursor: pointer;
+  box-shadow: -4px 0 12px -8px var(--card-shadow);
+}
+.canvas-expand-tab svg { flex-shrink: 0; }
+.canvas-expand-tab:hover { color: var(--ink); }
+.body-row.notes-collapsed .canvas-expand-tab { display: flex; }
 .canvas {
   position: relative;
   flex: 1;
