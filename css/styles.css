@@ -210,6 +210,7 @@ button { font-family: inherit; }
   flex: 1 1 48%;
   min-width: 0;
   overflow-y: auto;
+  overflow-x: auto; /* the page has a fixed reading width — scroll to it rather than letting it hide under the Notes pane on a narrower window */
   padding: 30px 26px 80px;
   border-right: 1px solid var(--rule);
   position: relative;
@@ -261,8 +262,18 @@ button { font-family: inherit; }
   white-space: pre;
   cursor: text;
   transform-origin: 0 0;
+  user-select: none; /* selection is a custom drag-marquee, not native Range — see pdfview.js */
 }
-.text-layer ::selection { background: rgba(201, 138, 46, 0.35); }
+
+.marquee-box {
+  position: absolute;
+  display: none;
+  background: rgba(201, 138, 46, 0.22);
+  border: 1px solid var(--accent);
+  border-radius: 2px;
+  pointer-events: none;
+  z-index: 15;
+}
 
 .highlight-layer {
   position: absolute;
@@ -391,6 +402,74 @@ button { font-family: inherit; }
   max-width: 260px;
   pointer-events: none;
 }
+
+/* ---------- modal (replaces window.prompt/confirm, which a sandboxed
+   iframe — e.g. the published artifact — silently blocks) ---------- */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 17, 10, 0.42);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .12s ease;
+  padding: 16px;
+}
+.modal-overlay.open { opacity: 1; pointer-events: auto; }
+.modal-box {
+  background: var(--card-bg);
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  box-shadow: 0 20px 48px -16px var(--card-shadow);
+  padding: 20px;
+  width: 320px;
+  max-width: 100%;
+  transform: translateY(6px);
+  transition: transform .12s ease;
+}
+.modal-overlay.open .modal-box { transform: translateY(0); }
+.modal-message {
+  font-size: 14px;
+  color: var(--ink);
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+.modal-input {
+  display: block;
+  width: 100%;
+  font: inherit;
+  font-size: 14px;
+  padding: 9px 10px;
+  border: 1px solid var(--rule);
+  border-radius: 7px;
+  background: var(--paper);
+  color: var(--ink);
+  margin-bottom: 16px;
+}
+.modal-input:focus { outline: none; border-color: var(--accent); }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.modal-actions button {
+  font: inherit;
+  font-size: 13px;
+  padding: 8px 14px;
+  border-radius: 7px;
+  cursor: pointer;
+  border: 1px solid var(--rule);
+  background: none;
+  color: var(--ink-soft);
+}
+.modal-actions .modal-cancel:hover { color: var(--ink); }
+.modal-actions .modal-ok {
+  background: var(--ink);
+  color: var(--paper);
+  border-color: var(--ink);
+}
+.modal-actions .modal-ok:hover { background: var(--accent); border-color: var(--accent); color: var(--ink); }
+.modal-actions .modal-ok.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+.modal-actions .modal-ok.danger:hover { filter: brightness(1.08); }
 
 /* ---------- responsive ---------- */
 @media (max-width: 900px) {

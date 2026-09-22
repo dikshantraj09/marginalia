@@ -5,6 +5,11 @@ any PDF, write your own notes on them, connect related excerpts with a
 thread, and click any card to jump straight back to the exact page it came
 from.
 
+Selecting text is a drag-marquee (draw a box over what you want) rather than
+the browser's native text selection — this keeps it accurate on tables and
+other multi-column layouts, where a PDF's underlying text order often
+doesn't match its visual reading order.
+
 PDFs and notes canvases are organized independently, each in their own
 folder tree on the left. A canvas isn't tied to one PDF — the same canvas
 can hold excerpts pulled from several different PDFs, each card labeled

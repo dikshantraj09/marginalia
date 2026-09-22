@@ -1,5 +1,17 @@
-// Renders a PDF into the reading pane: page canvases + selectable text layer +
-// a highlight overlay for excerpts pulled onto the notes canvas.
+// Renders a PDF into the reading pane: page canvases + a text layer (for
+// crisp glyph geometry) + a highlight overlay for excerpts pulled onto the
+// notes canvas.
+//
+// Selection is a custom drag-marquee rather than the browser's native text
+// Range. PDF content streams (especially tables from Word/legal-drafting
+// tools) very often list a page's text in column-major order — the whole
+// first cell, then the whole second cell — rather than top-to-bottom visual
+// reading order. A native Range follows that DOM order, so dragging across
+// a table row can select fragments out of sequence and produce highlight
+// rects that look scattered. A marquee sidesteps this: we grab whichever
+// spans fall inside the dragged rectangle and sort THEM by visual position
+// ourselves, so the result always matches what was actually dragged over —
+// on any document, table or not, and identically on mouse and touch.
 
 import * as pdfjsLib from '../vendor/pdfjs/pdf.min.mjs';
 // Resolve explicitly against this module's own URL (not the page's URL) —
@@ -9,7 +21,29 @@ import * as pdfjsLib from '../vendor/pdfjs/pdf.min.mjs';
 // always resolved correctly per the ES module spec.
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('../vendor/pdfjs/pdf.worker.min.mjs', import.meta.url).href;
 
-const RENDER_SCALE = 1.5;
+// The page is always laid out at this fixed CSS pixel width (a comfortable
+// manuscript-style reading column), independent of the PDF's native page
+// size. Canvas and text-layer are both derived from a viewport computed for
+// THIS width, so the invisible, selectable text spans always land exactly on
+// top of what's visually drawn — previously the canvas was scaled down to
+// fit via CSS while the text layer kept its own unscaled pixel size, so
+// dragging over visible text could land on completely different, offset
+// spans underneath (worse the further right/down on the page, and worst of
+// all on a standard Letter/A4 page, which is wider than the reading column).
+const TARGET_PAGE_WIDTH = 640;
+
+// A span only counts as "inside" the marquee once this much of its own area
+// overlaps it — lets a sloppy drag catch a line without also grabbing a
+// neighboring line/column it barely brushes.
+const OVERLAP_THRESHOLD = 0.35;
+// Pixels of movement before a pointerdown commits to being a drag at all
+// (versus a tap, which does nothing new).
+const DRAG_THRESHOLD = 6;
+// A gesture that starts mostly-vertical and moves fast is read as "trying to
+// scroll the page," not "trying to select a table cell" — so it's left
+// alone rather than hijacked into a marquee.
+const SCROLL_INTENT_MIN_DY = 14;
+const SCROLL_INTENT_RATIO = 2.2;
 
 export default class PdfView {
   constructor(container, pullBtn, onSelectionReady, onHighlightClick) {
@@ -22,20 +56,17 @@ export default class PdfView {
     this.pdf = null;
     this._selection = null;
 
-    // Debounced: selectionchange fires rapidly (per character) while a touch
-    // selection is being dragged, and reacting to every tick made the pull
-    // button flicker/reposition constantly. Settling for ~90ms is imperceptible
-    // as a delay but skips the noise.
-    this._selectionDebounce = null;
-    document.addEventListener('selectionchange', () => {
-      clearTimeout(this._selectionDebounce);
-      this._selectionDebounce = setTimeout(() => this._handleSelectionChange(), 90);
-    });
+    this._drag = null; // active marquee gesture state, or null
+    this.container.addEventListener('pointerdown', (e) => this._onPointerDown(e));
+    this.container.addEventListener('pointermove', (e) => this._onPointerMove(e), { passive: false });
+    window.addEventListener('pointerup', (e) => this._onPointerUp(e));
+    window.addEventListener('pointercancel', () => this._cancelDrag());
   }
 
   async load(arrayBuffer) {
     this.container.innerHTML = '';
     this.pageWraps.clear();
+    this._cancelDrag();
     try {
       const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
       this.pdf = await loadingTask.promise;
@@ -54,28 +85,46 @@ export default class PdfView {
 
   async _renderPage(pageNum) {
     const page = await this.pdf.getPage(pageNum);
-    const viewport = page.getViewport({ scale: RENDER_SCALE });
+    // cssViewport is the ground truth for layout: everything the user can
+    // see or interact with (canvas display size, text-layer, highlight
+    // rects) is positioned in this same CSS-pixel space, whatever the PDF's
+    // native page size is.
+    const baseViewport = page.getViewport({ scale: 1 });
+    const cssScale = TARGET_PAGE_WIDTH / baseViewport.width;
+    const cssViewport = page.getViewport({ scale: cssScale });
+    // The canvas is rasterized at a higher pixel density for crispness on
+    // high-DPI screens, but its CSS width/height still match cssViewport
+    // exactly, so it never needs a CSS width:100% scaling trick that would
+    // otherwise drift out of sync with the text layer.
+    const dpr = window.devicePixelRatio || 1;
+    const renderViewport = page.getViewport({ scale: cssScale * dpr });
 
     const wrap = document.createElement('div');
     wrap.className = 'pdf-page-wrap';
     wrap.dataset.page = pageNum;
-    wrap.style.width = viewport.width + 'px';
-    wrap.style.height = viewport.height + 'px';
+    wrap.style.width = cssViewport.width + 'px';
+    wrap.style.height = cssViewport.height + 'px';
 
     const canvas = document.createElement('canvas');
-    canvas.width = viewport.width;
-    canvas.height = viewport.height;
+    canvas.width = renderViewport.width;
+    canvas.height = renderViewport.height;
+    canvas.style.width = cssViewport.width + 'px';
+    canvas.style.height = cssViewport.height + 'px';
     wrap.appendChild(canvas);
 
     const textLayerDiv = document.createElement('div');
     textLayerDiv.className = 'text-layer';
-    textLayerDiv.style.width = viewport.width + 'px';
-    textLayerDiv.style.height = viewport.height + 'px';
+    textLayerDiv.style.width = cssViewport.width + 'px';
+    textLayerDiv.style.height = cssViewport.height + 'px';
     wrap.appendChild(textLayerDiv);
 
     const highlightLayer = document.createElement('div');
     highlightLayer.className = 'highlight-layer';
     wrap.appendChild(highlightLayer);
+
+    const marqueeEl = document.createElement('div');
+    marqueeEl.className = 'marquee-box';
+    wrap.appendChild(marqueeEl);
 
     this.container.appendChild(wrap);
     const pageNumEl = document.createElement('div');
@@ -84,109 +133,212 @@ export default class PdfView {
     this.container.appendChild(pageNumEl);
 
     const ctx = canvas.getContext('2d');
-    await page.render({ canvasContext: ctx, viewport }).promise;
+    await page.render({ canvasContext: ctx, viewport: renderViewport }).promise;
 
     const textContent = await page.getTextContent();
     const textLayer = new pdfjsLib.TextLayer({
       textContentSource: textContent,
       container: textLayerDiv,
-      viewport,
+      viewport: cssViewport,
     });
     await textLayer.render();
 
-    this.pageWraps.set(pageNum, { wrap, viewport, highlightLayer, page });
+    this.pageWraps.set(pageNum, { wrap, viewport: cssViewport, highlightLayer, marqueeEl, page });
   }
 
-  _handleSelectionChange() {
-    const sel = window.getSelection();
-    if (!sel || sel.isCollapsed || sel.rangeCount === 0) {
+  // ---------- marquee selection ----------
+
+  _onPointerDown(e) {
+    if (e.button !== undefined && e.button !== 0) return; // left click / primary touch only
+    if (e.target.closest('.highlight-rect')) return; // let its own click (jump to card) fire
+    if (e.target.closest('.pull-btn')) return;
+    const pageWrap = e.target.closest('.pdf-page-wrap');
+    if (!pageWrap || !this.container.contains(pageWrap)) return;
+
+    this._drag = {
+      pointerId: e.pointerId,
+      pageWrap,
+      startX: e.clientX,
+      startY: e.clientY,
+      committed: false, // becomes true once movement crosses DRAG_THRESHOLD and we decide it's a selection, not a scroll
+      aborted: false, // true once we've decided this gesture is a scroll and should be left alone
+    };
+  }
+
+  _onPointerMove(e) {
+    const d = this._drag;
+    if (!d || e.pointerId !== d.pointerId || d.aborted) return;
+
+    const dx = e.clientX - d.startX;
+    const dy = e.clientY - d.startY;
+
+    if (!d.committed) {
+      const dist = Math.hypot(dx, dy);
+      if (dist < DRAG_THRESHOLD) return;
+      // A fast, mostly-vertical gesture reads as "scroll the reading pane,"
+      // not "select this text" — leave it alone rather than hijacking it.
+      if (Math.abs(dy) > SCROLL_INTENT_MIN_DY && Math.abs(dy) > Math.abs(dx) * SCROLL_INTENT_RATIO) {
+        d.aborted = true;
+        return;
+      }
+      d.committed = true;
+      this.clearSelectionUI();
       this.pullBtn.style.display = 'none';
-      this._selection = null;
-      return;
-    }
-    const range = sel.getRangeAt(0);
-    const container = range.commonAncestorContainer;
-    const el = container.nodeType === 1 ? container : container.parentElement;
-    const pageWrap = el ? el.closest('.pdf-page-wrap') : null;
-    if (!pageWrap || !this.container.contains(pageWrap)) {
-      this.pullBtn.style.display = 'none';
-      this._selection = null;
-      return;
     }
 
-    const pageNum = parseInt(pageWrap.dataset.page, 10);
+    e.preventDefault();
+    const info = this.pageWraps.get(parseInt(d.pageWrap.dataset.page, 10));
+    if (!info) return;
+    const wrapRect = d.pageWrap.getBoundingClientRect();
+    const curX = Math.min(Math.max(e.clientX, wrapRect.left), wrapRect.right);
+    const curY = Math.min(Math.max(e.clientY, wrapRect.top), wrapRect.bottom);
+    const startX = Math.min(Math.max(d.startX, wrapRect.left), wrapRect.right);
+    const startY = Math.min(Math.max(d.startY, wrapRect.top), wrapRect.bottom);
+
+    const left = Math.min(startX, curX) - wrapRect.left;
+    const top = Math.min(startY, curY) - wrapRect.top;
+    const width = Math.abs(curX - startX);
+    const height = Math.abs(curY - startY);
+
+    info.marqueeEl.style.left = left + 'px';
+    info.marqueeEl.style.top = top + 'px';
+    info.marqueeEl.style.width = width + 'px';
+    info.marqueeEl.style.height = height + 'px';
+    info.marqueeEl.style.display = 'block';
+
+    d.rectPageRelative = { left, top, width, height };
+  }
+
+  _onPointerUp(e) {
+    const d = this._drag;
+    if (!d || e.pointerId !== d.pointerId) return;
+    this._drag = null;
+
+    const info = this.pageWraps.get(parseInt(d.pageWrap.dataset.page, 10));
+    if (info) info.marqueeEl.style.display = 'none';
+
+    if (!d.committed || !d.rectPageRelative) return; // tap, or a gesture we treated as scroll
+
+    const result = this._computeSelectionFromRect(d.pageWrap, d.rectPageRelative);
+    if (!result) return;
+
+    const pageNum = parseInt(d.pageWrap.dataset.page, 10);
+    this._selection = { page: pageNum, rects: result.rects, text: result.text };
+    this._positionPullBtn(d.pageWrap, result.rects);
+    if (this.onSelectionReady) this.onSelectionReady(this._selection);
+  }
+
+  _cancelDrag() {
+    if (this._drag) {
+      const info = this.pageWraps.get(parseInt(this._drag.pageWrap.dataset.page, 10));
+      if (info) info.marqueeEl.style.display = 'none';
+    }
+    this._drag = null;
+  }
+
+  // Finds every text span whose box substantially overlaps the dragged
+  // rectangle, clusters them into visual rows (not DOM order), and builds
+  // both the extracted text and one clean highlight rect per row.
+  _computeSelectionFromRect(pageWrap, rect) {
     const wrapRect = pageWrap.getBoundingClientRect();
-    const clientRects = Array.from(range.getClientRects());
-    if (!clientRects.length) return;
+    const marquee = { left: rect.left, top: rect.top, right: rect.left + rect.width, bottom: rect.top + rect.height };
+    const spans = pageWrap.querySelectorAll('.text-layer span');
+    const hits = [];
 
-    // store rects as percentages of the page so they survive re-render/zoom
-    const rects = clientRects.map((r) => ({
-      xPct: (r.left - wrapRect.left) / wrapRect.width,
-      yPct: (r.top - wrapRect.top) / wrapRect.height,
-      wPct: r.width / wrapRect.width,
-      hPct: r.height / wrapRect.height,
-    }));
+    for (const span of spans) {
+      const text = span.textContent;
+      if (!text || !text.trim()) continue;
+      const r = span.getBoundingClientRect();
+      const left = r.left - wrapRect.left;
+      const top = r.top - wrapRect.top;
+      const right = r.right - wrapRect.left;
+      const bottom = r.bottom - wrapRect.top;
 
-    const text = this._extractText(range, pageWrap).trim();
-    if (!text) { this.pullBtn.style.display = 'none'; return; }
+      const overlapW = Math.max(0, Math.min(right, marquee.right) - Math.max(left, marquee.left));
+      const overlapH = Math.max(0, Math.min(bottom, marquee.bottom) - Math.max(top, marquee.top));
+      const spanArea = Math.max(1, (right - left) * (bottom - top));
+      if ((overlapW * overlapH) / spanArea < OVERLAP_THRESHOLD) continue;
 
-    this._selection = { page: pageNum, rects, text };
+      hits.push({ text, left, top, right, bottom });
+    }
+    if (!hits.length) return null;
 
+    // Cluster into rows by vertical position, not DOM order — this is what
+    // makes multi-column content (tables) come out in reading order.
+    hits.sort((a, b) => a.top - b.top);
+    const rows = [];
+    for (const h of hits) {
+      const rowHeight = h.bottom - h.top;
+      let row = rows.find((r) => Math.abs(r.top - h.top) < rowHeight * 0.6);
+      if (!row) {
+        row = { top: h.top, bottom: h.bottom, items: [] };
+        rows.push(row);
+      }
+      row.items.push(h);
+      row.top = Math.min(row.top, h.top);
+      row.bottom = Math.max(row.bottom, h.bottom);
+    }
+    rows.sort((a, b) => a.top - b.top);
+
+    const textParts = [];
+    const rects = [];
+    for (const row of rows) {
+      row.items.sort((a, b) => a.left - b.left);
+      let rowText = '';
+      let prevRight = null;
+      let rowLeft = Infinity;
+      let rowRight = -Infinity;
+      for (const item of row.items) {
+        if (prevRight !== null && item.left - prevRight > 2) rowText += ' ';
+        rowText += item.text;
+        prevRight = item.right;
+        rowLeft = Math.min(rowLeft, item.left);
+        rowRight = Math.max(rowRight, item.right);
+      }
+      const trimmed = rowText.trim();
+      if (!trimmed) continue;
+      textParts.push(trimmed);
+      rects.push({
+        xPct: rowLeft / wrapRect.width,
+        yPct: row.top / wrapRect.height,
+        wPct: (rowRight - rowLeft) / wrapRect.width,
+        hPct: (row.bottom - row.top) / wrapRect.height,
+      });
+    }
+    if (!textParts.length) return null;
+
+    return { text: textParts.join(' ').replace(/\s+/g, ' ').trim(), rects };
+  }
+
+  _positionPullBtn(pageWrap, rects) {
+    if (!rects.length) return;
+    const wrapRect = pageWrap.getBoundingClientRect();
     const readingRect = this.scrollHost.getBoundingClientRect();
-    const firstRect = clientRects[0];
+    const first = rects[0];
+    const firstTopClient = wrapRect.top + first.yPct * wrapRect.height;
+    const firstLeftClient = wrapRect.left + first.xPct * wrapRect.width;
+    const firstBottomClient = firstTopClient + first.hPct * wrapRect.height;
+
     const btnWidth = 150; // approx — clamped so it never runs off the right edge
     const left = Math.min(
-      Math.max(8, firstRect.left - readingRect.left),
+      Math.max(8, firstLeftClient - readingRect.left),
       readingRect.width - btnWidth
     );
     // prefer just above the selection, but flip below it if that would go
     // off the top of the visible pane
-    const aboveTop = firstRect.top - readingRect.top + this.scrollHost.scrollTop - 38;
+    const aboveTop = firstTopClient - readingRect.top + this.scrollHost.scrollTop - 38;
     const top = aboveTop < this.scrollHost.scrollTop + 4
-      ? firstRect.bottom - readingRect.top + this.scrollHost.scrollTop + 8
+      ? firstBottomClient - readingRect.top + this.scrollHost.scrollTop + 8
       : aboveTop;
     this.pullBtn.style.left = left + 'px';
     this.pullBtn.style.top = top + 'px';
     this.pullBtn.style.display = 'flex';
-
-    if (this.onSelectionReady) this.onSelectionReady(this._selection);
-  }
-
-  // PDF text layers rarely encode an explicit space at a line wrap, so a
-  // plain range.toString() often glues the last word of one line to the
-  // first word of the next. Rebuild the string span-by-span instead, and
-  // insert a space whenever a new line (new vertical position) starts.
-  _extractText(range, pageWrap) {
-    const spans = Array.from(pageWrap.querySelectorAll('.text-layer span'));
-    const parts = [];
-    let lastTop = null;
-    for (const span of spans) {
-      if (!range.intersectsNode(span)) continue;
-      let text = span.textContent;
-      if (span.contains(range.startContainer) && range.startContainer.nodeType === 3) {
-        text = span.textContent.slice(range.startOffset);
-      }
-      if (span.contains(range.endContainer) && range.endContainer.nodeType === 3) {
-        const endOffset = span.contains(range.startContainer) && range.startContainer === range.endContainer
-          ? range.endOffset - range.startOffset
-          : range.endOffset;
-        text = text.slice(0, endOffset);
-      }
-      if (!text) continue;
-      const top = span.getBoundingClientRect().top;
-      if (lastTop !== null && Math.abs(top - lastTop) > 2 && parts.length) {
-        parts.push(' ');
-      }
-      parts.push(text);
-      lastTop = top;
-    }
-    return parts.join('').replace(/\s+/g, ' ');
   }
 
   clearSelectionUI() {
     this.pullBtn.style.display = 'none';
-    window.getSelection().removeAllRanges();
     this._selection = null;
+    for (const [, info] of this.pageWraps) info.marqueeEl.style.display = 'none';
   }
 
   // Draw (or redraw) the highlight rects for a card onto its page.

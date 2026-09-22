@@ -4,6 +4,7 @@
 // independently of each other.
 
 import DB from './db.js';
+import { showPrompt, showConfirm } from './modal.js';
 
 const DRAG_TYPE = { pdf: 'text/pdf-doc-id', note: 'text/note-canvas-id' };
 
@@ -174,7 +175,7 @@ export default class Rail {
   }
 
   async _createFolder(parentId, kind) {
-    const name = prompt('Folder name:', 'New folder');
+    const name = await showPrompt('Name this folder', 'New folder');
     if (!name) return;
     const folder = { id: DB.uid('fld'), name: name.trim(), parentId, kind };
     await DB.put('folders', folder);
@@ -185,7 +186,7 @@ export default class Rail {
   async _deleteFolder(f) {
     const hasChildren = this.folders.some((x) => x.parentId === f.id) ||
       this.documents.some((x) => x.folderId === f.id) || this.canvases.some((x) => x.folderId === f.id);
-    if (hasChildren && !confirm('"' + f.name + '" isn\'t empty. Move its contents up a level and delete the folder?')) return;
+    if (hasChildren && !(await showConfirm('"' + f.name + '" isn\'t empty. Move its contents up a level and delete the folder?'))) return;
     for (const sub of this.folders.filter((x) => x.parentId === f.id)) { sub.parentId = f.parentId; await DB.put('folders', sub); }
     for (const doc of this.documents.filter((x) => x.folderId === f.id)) { doc.folderId = f.parentId; await DB.put('documents', doc); }
     for (const cv of this.canvases.filter((x) => x.folderId === f.id)) { cv.folderId = f.parentId; await DB.put('canvases', cv); }
@@ -214,7 +215,7 @@ export default class Rail {
     const msg = cards.length
       ? 'Delete "' + d.name + '"? ' + cards.length + ' excerpt' + (cards.length > 1 ? 's' : '') + ' pulled from it will also be removed from your notes.'
       : 'Delete "' + d.name + '"?';
-    if (!confirm(msg)) return;
+    if (!(await showConfirm(msg))) return;
     for (const c of cards) { await DB.delete('cards', c.id); }
     await DB.delete('documents', d.id);
     this.documents = this.documents.filter((x) => x.id !== d.id);
@@ -227,7 +228,7 @@ export default class Rail {
     const msg = cards.length
       ? 'Delete "' + c.name + '"? It has ' + cards.length + ' card' + (cards.length > 1 ? 's' : '') + ' on it.'
       : 'Delete "' + c.name + '"?';
-    if (!confirm(msg)) return;
+    if (!(await showConfirm(msg))) return;
     for (const card of cards) { await DB.delete('cards', card.id); }
     const links = await DB.byIndex('links', 'canvasId', c.id);
     for (const l of links) { await DB.delete('links', l.id); }
@@ -238,7 +239,7 @@ export default class Rail {
   }
 
   async _createCanvas(folderId) {
-    const name = prompt('Name this notes canvas:', 'New notes');
+    const name = await showPrompt('Name this notes canvas', 'New notes');
     if (!name) return null;
     const cv = { id: DB.uid('cv'), name: name.trim(), folderId, createdAt: Date.now() };
     await DB.put('canvases', cv);
