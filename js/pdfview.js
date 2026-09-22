@@ -407,7 +407,7 @@ export default class PdfView {
     if (!result) return;
 
     const pageNum = parseInt(d.pageWrap.dataset.page, 10);
-    this._selection = { page: pageNum, rects: result.rects, text: result.text };
+    this._selection = { page: pageNum, rects: result.rects, text: result.text, image: result.image || null };
     this._positionPullBtn(d.pageWrap, result.rects);
     if (this.onSelectionReady) this.onSelectionReady(this._selection);
   }
@@ -445,7 +445,7 @@ export default class PdfView {
 
       hits.push({ text, left, top, right, bottom });
     }
-    if (!hits.length) return null;
+    if (!hits.length) return this._imageFallbackSelection(pageWrap, rect, wrapRect);
 
     // Cluster into rows by vertical position, not DOM order — this is what
     // makes multi-column content (tables) come out in reading order.
@@ -489,9 +489,52 @@ export default class PdfView {
         hPct: (row.bottom - row.top) / wrapRect.height,
       });
     }
-    if (!textParts.length) return null;
+    if (!textParts.length) return this._imageFallbackSelection(pageWrap, rect, wrapRect);
 
     return { text: textParts.join(' ').replace(/\s+/g, ' ').trim(), rects };
+  }
+
+  // No text spans fell inside the drag — most likely a scanned/photographed
+  // page with no extractable text at all, where the row-clustering logic
+  // above has nothing to work with. Rather than silently discarding the
+  // gesture (which reads as "the selection isn't working"), fall back to
+  // treating the dragged rectangle itself as the excerpt and snapshotting
+  // that region of the rendered page as an image, so scanned documents can
+  // still be pulled onto the canvas and linked back to their exact page.
+  _imageFallbackSelection(pageWrap, rect, wrapRect) {
+    if (rect.width < 4 || rect.height < 4) return null; // too small to be a real drag
+    const rectPct = {
+      xPct: rect.left / wrapRect.width,
+      yPct: rect.top / wrapRect.height,
+      wPct: rect.width / wrapRect.width,
+      hPct: rect.height / wrapRect.height,
+    };
+    const image = this._cropPageImage(pageWrap, rectPct);
+    if (!image) return null;
+    return { text: null, image, rects: [rectPct] };
+  }
+
+  // Crops the given percentage-rect out of a page's already-rendered canvas
+  // and returns it as a PNG data URL. Uses the canvas's own native pixel
+  // dimensions (not CSS/zoom-affected measurements) so the crop stays sharp
+  // regardless of current zoom level.
+  _cropPageImage(pageWrap, rectPct) {
+    const srcCanvas = pageWrap.querySelector('canvas');
+    if (!srcCanvas) return null;
+    const sx = Math.round(rectPct.xPct * srcCanvas.width);
+    const sy = Math.round(rectPct.yPct * srcCanvas.height);
+    const sw = Math.max(1, Math.round(rectPct.wPct * srcCanvas.width));
+    const sh = Math.max(1, Math.round(rectPct.hPct * srcCanvas.height));
+    const out = document.createElement('canvas');
+    out.width = sw;
+    out.height = sh;
+    const ctx = out.getContext('2d');
+    ctx.drawImage(srcCanvas, sx, sy, sw, sh, 0, 0, sw, sh);
+    try {
+      return out.toDataURL('image/png');
+    } catch (err) {
+      return null; // e.g. a tainted canvas — shouldn't happen for our own renders, but don't crash the gesture over it
+    }
   }
 
   _positionPullBtn(pageWrap, rects) {

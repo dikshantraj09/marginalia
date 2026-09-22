@@ -9,6 +9,12 @@
 // against. Dragging empty canvas background pans the view; dragging a card
 // moves the card. The dotted background pans in lockstep (via
 // background-position) so it always reads as one continuous plane.
+//
+// A link between two cards is a small object `{id, a, b, type}` — `a` is
+// the card the thread was dragged FROM, `b` the one it was dropped on
+// (drawn with an arrowhead pointing at `b`), and `type` an optional short
+// label ("Supports", "Contradicts", ...) set from the picker menu that
+// opens after a link is made or when an existing thread is clicked.
 
 function truncateName(name) {
   const base = name.replace(/\.pdf$/i, '');
@@ -17,8 +23,15 @@ function truncateName(name) {
 function escapeAttr(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
+function escapeHtml(s) {
+  return escapeAttr(s);
+}
 
 const MARGIN = 40; // world-space padding used when framing cards on open
+
+// Preset labels offered in the link picker menu — anything else typed into
+// the custom field is stored verbatim.
+const LINK_TYPES = ['Supports', 'Contradicts', 'References', 'Same clause'];
 
 export default class NotesCanvas {
   constructor(canvasEl, innerEl, svgGroupEl, emptyEl, callbacks) {
@@ -33,13 +46,16 @@ export default class NotesCanvas {
     this.canvasId = null;
     this._saveTimers = new Map();
     this.pan = { x: 0, y: 0 };
+    this._menuEl = null;
     this._wirePanning();
+    this._ensureMarker();
   }
 
   setCanvas(canvasId, cards, links) {
     this.canvasId = canvasId;
     this.cards = cards || [];
     this.links = links || [];
+    this._closeLinkMenu();
     this._frameCards();
     this._renderAll();
   }
@@ -77,11 +93,18 @@ export default class NotesCanvas {
     const onDown = (e) => {
       if (e.button !== undefined && e.button !== 0) return;
       if (e.target.closest('.card')) return; // card's own handler owns this gesture
+      if (e.target.closest('.link-menu')) return;
+      // A link thread's own hit-path or label owns clicks on itself (to open
+      // the picker menu) — starting a pan here would call setPointerCapture
+      // on the canvas, which retargets the resulting `click` event to the
+      // canvas div and the thread's click handler would never fire.
+      if (e.target.closest && e.target.closest('.hit, .link-label')) return;
       dragging = true;
       startX = e.clientX; startY = e.clientY;
       startPanX = this.pan.x; startPanY = this.pan.y;
       this.canvasEl.classList.add('panning');
       try { this.canvasEl.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+      this._closeLinkMenu();
     };
     const onMove = (e) => {
       if (!dragging) return;
@@ -110,7 +133,7 @@ export default class NotesCanvas {
     this.emptyEl.style.display = this.cards.length ? 'none' : 'block';
   }
 
-  addExcerptCard({ docId, docName, page, rects, text }) {
+  addExcerptCard({ docId, docName, page, rects, text, image }) {
     const pos = this._claimPosition();
     const card = {
       id: 'card_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
@@ -119,7 +142,10 @@ export default class NotesCanvas {
       docName,
       page,
       rects,
-      excerpt: text.length > 220 ? text.slice(0, 220) + '…' : text,
+      // Scanned/image-only pages have no extractable text — the marquee
+      // still captures a snapshot of that region so the excerpt isn't lost.
+      excerpt: text ? (text.length > 220 ? text.slice(0, 220) + '…' : text) : '',
+      image: image || null,
       note: '',
       x: pos.x,
       y: pos.y,
@@ -150,9 +176,17 @@ export default class NotesCanvas {
     el.style.top = c.y + 'px';
     el.dataset.id = c.id;
 
-    const quote = document.createElement('div');
-    quote.className = 'card-quote';
-    quote.textContent = '“' + c.excerpt + '”';
+    let quote;
+    if (c.image) {
+      quote = document.createElement('img');
+      quote.className = 'card-quote card-image';
+      quote.src = c.image;
+      quote.alt = 'Excerpt image from page ' + c.page;
+    } else {
+      quote = document.createElement('div');
+      quote.className = 'card-quote';
+      quote.textContent = '“' + c.excerpt + '”';
+    }
 
     const note = document.createElement('div');
     note.className = 'card-note';
@@ -180,13 +214,17 @@ export default class NotesCanvas {
     let dragging = false, moved = false, startX, startY, origX, origY;
 
     el.addEventListener('pointerdown', (e) => {
-      if (e.target === nub) { this._startLink(c, e); return; }
+      if (e.target === nub) {
+        this._startLink(c, e);
+        return;
+      }
       if (e.target === delBtn) return;
       if (e.target === noteEl || noteEl.contains(e.target)) return; // let editing work normally
       dragging = true; moved = false;
       startX = e.clientX; startY = e.clientY;
       origX = c.x; origY = c.y;
       try { el.setPointerCapture(e.pointerId); } catch (err) { /* ignore — synthetic/edge pointer events */ }
+      this._closeLinkMenu();
     });
     el.addEventListener('pointermove', (e) => {
       if (!dragging) return;
@@ -240,13 +278,21 @@ export default class NotesCanvas {
 
   _removeCard(c, opts) {
     this.cards = this.cards.filter((x) => x.id !== c.id);
-    this.links = this.links.filter((l) => l[0] !== c.id && l[1] !== c.id);
+    const droppedLinks = this.links.filter((l) => l.a === c.id || l.b === c.id);
+    this.links = this.links.filter((l) => l.a !== c.id && l.b !== c.id);
     const el = this.cardEls.get(c.id);
     if (el) el.remove();
     this.cardEls.delete(c.id);
+    this._closeLinkMenu();
     this._drawLinks();
     this._updateEmptyState();
-    if (!(opts && opts.alreadyPersisted) && this.cb.onCardRemoved) this.cb.onCardRemoved(c.id);
+    if (!(opts && opts.alreadyPersisted)) {
+      if (this.cb.onCardRemoved) this.cb.onCardRemoved(c.id);
+      // The card's own delete cascades to its links server-side too, but do
+      // it here as well so a caller relying purely on onLinkRemoved (e.g.
+      // an export or undo feature added later) sees a consistent trail.
+      if (this.cb.onLinkRemoved) droppedLinks.forEach((l) => this.cb.onLinkRemoved(l.id));
+    }
   }
 
   _persistCard(c) {
@@ -257,24 +303,71 @@ export default class NotesCanvas {
     return { x: c.x + 100, y: c.y + 38 };
   }
 
-  _drawLinks(tempLine) {
-    this.svgGroup.innerHTML = '';
-    this.links.forEach((pair) => {
-      const a = this.cards.find((c) => c.id === pair[0]);
-      const b = this.cards.find((c) => c.id === pair[1]);
-      if (!a || !b) return;
-      this._addPath(this._cardCenter(a), this._cardCenter(b), false);
-    });
-    if (tempLine) this._addPath(tempLine.from, tempLine.to, true);
+  // A <marker> element (the arrowhead) has to be defined once and referenced
+  // by id from each path's marker-end — SVG doesn't let you inline one.
+  _ensureMarker() {
+    const svg = this.svgGroup.ownerSVGElement || this.svgGroup.closest('svg');
+    if (!svg || svg.querySelector('#link-arrow')) return;
+    const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+    defs.innerHTML =
+      '<marker id="link-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">' +
+      '<path d="M 0 0 L 10 5 L 0 10 z" class="link-arrow-head"></path>' +
+      '</marker>';
+    svg.insertBefore(defs, svg.firstChild);
   }
 
-  _addPath(p1, p2, live) {
-    const mx = (p1.x + p2.x) / 2;
+  _drawLinks(tempLine) {
+    this.svgGroup.innerHTML = '';
+    this._ensureMarker();
+    this.links.forEach((link) => {
+      const a = this.cards.find((c) => c.id === link.a);
+      const b = this.cards.find((c) => c.id === link.b);
+      if (!a || !b) return;
+      this._addPath(this._cardCenter(a), this._cardCenter(b), { link });
+    });
+    if (tempLine) this._addPath(tempLine.from, tempLine.to, { live: true });
+  }
+
+  _addPath(p1, p2, opts) {
+    opts = opts || {};
+    const mx = (p1.x + p2.x) / 2, my = (p1.y + p2.y) / 2;
     const d = 'M ' + p1.x + ' ' + p1.y + ' C ' + mx + ' ' + p1.y + ', ' + mx + ' ' + p2.y + ', ' + p2.x + ' ' + p2.y;
+
+    if (opts.link) {
+      // A wide, invisible path drawn first (so the thin visible one paints
+      // over it) gives a much easier click/tap target than the 2px visible
+      // stroke itself would.
+      const hit = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      hit.setAttribute('d', d);
+      hit.classList.add('hit');
+      hit.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this._openLinkMenu(opts.link, e.clientX, e.clientY);
+      });
+      this.svgGroup.appendChild(hit);
+    }
+
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     path.setAttribute('d', d);
-    if (live) path.classList.add('live');
+    if (opts.live) path.classList.add('live');
+    if (opts.link) {
+      path.setAttribute('marker-end', 'url(#link-arrow)');
+      path.dataset.linkId = opts.link.id;
+    }
     this.svgGroup.appendChild(path);
+
+    if (opts.link && opts.link.type) {
+      const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      label.setAttribute('x', mx);
+      label.setAttribute('y', my);
+      label.classList.add('link-label');
+      label.textContent = opts.link.type;
+      label.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this._openLinkMenu(opts.link, e.clientX, e.clientY);
+      });
+      this.svgGroup.appendChild(label);
+    }
   }
 
   _startLink(fromCard, e) {
@@ -298,18 +391,54 @@ export default class NotesCanvas {
       // in-progress thread rather than guessing a drop target from (0,0).
       if (ev.type === 'pointercancel') { this._drawLinks(); return; }
       const target = document.elementFromPoint(ev.clientX, ev.clientY);
-      const targetCard = target ? target.closest('.card') : null;
+      let targetCard = target ? target.closest('.card') : null;
+      // Releasing back over the SAME card you dragged from (very likely on
+      // a tall card, where the nub sits far from the top and a modest drag
+      // never actually clears the card's own bottom edge) isn't a valid
+      // drop target — treat it the same as missing the mark entirely and
+      // fall through to the proximity search below rather than silently
+      // doing nothing.
+      const sameCard = targetCard && targetCard.dataset.id === fromCard.id;
+      if (!targetCard || sameCard) {
+        // A precise drop is a small, fiddly target — if the release point
+        // isn't exactly over a DIFFERENT card, fall back to whichever
+        // other card's box is nearest the release point, as long as it's
+        // close enough that this was clearly an attempt to drop on it
+        // rather than empty canvas.
+        const SNAP_MARGIN = 60;
+        let best = null, bestDist = Infinity;
+        for (const [id, el] of this.cardEls) {
+          if (id === fromCard.id) continue;
+          const r = el.getBoundingClientRect();
+          const dx = Math.max(r.left - ev.clientX, 0, ev.clientX - r.right);
+          const dy = Math.max(r.top - ev.clientY, 0, ev.clientY - r.bottom);
+          const dist = Math.hypot(dx, dy);
+          if (dist <= SNAP_MARGIN && dist < bestDist) { best = el; bestDist = dist; }
+        }
+        targetCard = best; // null if nothing nearby either — a real non-drop
+      }
+      let newLink = null;
       if (targetCard && targetCard.dataset.id !== fromCard.id) {
-        const pair = [fromCard.id, targetCard.dataset.id];
+        const toId = targetCard.dataset.id;
         const exists = this.links.some(
-          (l) => (l[0] === pair[0] && l[1] === pair[1]) || (l[0] === pair[1] && l[1] === pair[0])
+          (l) => (l.a === fromCard.id && l.b === toId) || (l.a === toId && l.b === fromCard.id)
         );
         if (!exists) {
-          this.links.push(pair);
-          if (this.cb.onLinkAdded) this.cb.onLinkAdded(pair);
+          newLink = {
+            id: 'lnk_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+            a: fromCard.id,
+            b: toId,
+            type: null,
+          };
+          this.links.push(newLink);
+          if (this.cb.onLinkAdded) this.cb.onLinkAdded(newLink);
         }
       }
       this._drawLinks();
+      // Freshly-made threads open straight into the label picker — tagging
+      // what the connection MEANS is the whole point; skip it (click
+      // anywhere else) if you just want a bare thread.
+      if (newLink) this._openLinkMenu(newLink, ev.clientX, ev.clientY);
     };
     window.addEventListener('pointermove', onMove, { passive: false });
     window.addEventListener('pointerup', finish);
@@ -319,5 +448,129 @@ export default class NotesCanvas {
     // "in-progress" link thread from the original card.
     window.addEventListener('pointercancel', finish);
     e.stopPropagation();
+  }
+
+  // ---------- link picker menu (label / reverse / delete) ----------
+
+  _closeLinkMenu() {
+    if (this._menuEl) { this._menuEl.remove(); this._menuEl = null; }
+    if (this._menuOutsideHandler) {
+      window.removeEventListener('pointerdown', this._menuOutsideHandler, true);
+      this._menuOutsideHandler = null;
+    }
+  }
+
+  _openLinkMenu(link, clientX, clientY) {
+    this._closeLinkMenu();
+
+    const menu = document.createElement('div');
+    menu.className = 'link-menu';
+
+    const typeBtns = LINK_TYPES.map((t) => {
+      const active = link.type === t;
+      return '<button type="button" class="link-menu-type' + (active ? ' active' : '') + '" data-type="' + escapeAttr(t) + '">' + escapeHtml(t) + '</button>';
+    }).join('');
+
+    menu.innerHTML =
+      '<div class="link-menu-types">' + typeBtns + '</div>' +
+      '<div class="link-menu-custom">' +
+      '<input type="text" class="link-menu-input" placeholder="Custom label…" value="' + (link.type && !LINK_TYPES.includes(link.type) ? escapeAttr(link.type) : '') + '" />' +
+      '</div>' +
+      '<div class="link-menu-row">' +
+      '<button type="button" class="link-menu-action" data-act="clear">No label</button>' +
+      '<button type="button" class="link-menu-action" data-act="reverse">Reverse ↔</button>' +
+      '<button type="button" class="link-menu-action danger" data-act="delete">Delete</button>' +
+      '</div>';
+
+    document.body.appendChild(menu);
+    this._menuEl = menu;
+
+    // Position, clamped so it never runs off the viewport edge.
+    const rect = menu.getBoundingClientRect();
+    const left = Math.min(Math.max(8, clientX - rect.width / 2), window.innerWidth - rect.width - 8);
+    const top = Math.min(Math.max(8, clientY + 12), window.innerHeight - rect.height - 8);
+    menu.style.left = left + 'px';
+    menu.style.top = top + 'px';
+
+    const setType = (type) => {
+      link.type = type || null;
+      if (this.cb.onLinkChanged) this.cb.onLinkChanged(link);
+      this._drawLinks();
+      this._closeLinkMenu();
+    };
+
+    menu.querySelectorAll('.link-menu-type').forEach((btn) => {
+      btn.addEventListener('click', () => setType(btn.dataset.type));
+    });
+    const input = menu.querySelector('.link-menu-input');
+    input.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') setType(input.value.trim());
+    });
+    input.addEventListener('click', (e) => e.stopPropagation());
+    menu.querySelector('[data-act="clear"]').addEventListener('click', () => setType(null));
+    menu.querySelector('[data-act="reverse"]').addEventListener('click', () => {
+      const a = link.a; link.a = link.b; link.b = a;
+      if (this.cb.onLinkChanged) this.cb.onLinkChanged(link);
+      this._drawLinks();
+      this._closeLinkMenu();
+    });
+    menu.querySelector('[data-act="delete"]').addEventListener('click', () => {
+      this.links = this.links.filter((l) => l.id !== link.id);
+      if (this.cb.onLinkRemoved) this.cb.onLinkRemoved(link.id);
+      this._drawLinks();
+      this._closeLinkMenu();
+    });
+
+    // Any pointerdown outside the menu closes it without acting — capture
+    // phase so it fires before the canvas-pan / card-drag handlers below it.
+    this._menuOutsideHandler = (e) => {
+      if (!menu.contains(e.target)) this._closeLinkMenu();
+    };
+    // Skip the gesture that opened the menu itself.
+    setTimeout(() => window.addEventListener('pointerdown', this._menuOutsideHandler, true), 0);
+  }
+
+  // ---------- export ----------
+
+  // Walks the link graph into a plain-text outline: each card that has at
+  // least one outgoing link, followed by its links (labeled where set) to
+  // their target excerpts, then a trailing section for any cards with no
+  // links at all. Meant to be saved/copied as a quick argument summary.
+  getLinkMapMarkdown() {
+    const cardLabel = (c) => {
+      const src = (c.docName ? c.docName + ', ' : '') + 'p.' + c.page;
+      const text = c.excerpt ? c.excerpt.replace(/\s+/g, ' ').trim() : (c.image ? '[image excerpt]' : '');
+      const snippet = text.length > 140 ? text.slice(0, 140) + '…' : text;
+      return '"' + snippet + '" (' + src + ')';
+    };
+
+    const linked = new Set();
+    const lines = ['# Link map', ''];
+    let any = false;
+    this.cards.forEach((c) => {
+      const outgoing = this.links.filter((l) => l.a === c.id);
+      if (!outgoing.length) return;
+      any = true;
+      linked.add(c.id);
+      lines.push('- ' + cardLabel(c));
+      outgoing.forEach((l) => {
+        const target = this.cards.find((x) => x.id === l.b);
+        if (!target) return;
+        linked.add(target.id);
+        const verb = l.type ? l.type.toLowerCase() : 'links to';
+        lines.push('  - ' + verb + ' → ' + cardLabel(target));
+      });
+    });
+
+    const unlinked = this.cards.filter((c) => !linked.has(c.id));
+    if (unlinked.length) {
+      if (any) lines.push('');
+      lines.push('## Unlinked cards', '');
+      unlinked.forEach((c) => lines.push('- ' + cardLabel(c)));
+    }
+    if (!any && !unlinked.length) lines.push('_No cards on this canvas yet._');
+
+    return lines.join('\n');
   }
 }

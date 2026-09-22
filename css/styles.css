@@ -514,6 +514,20 @@ button { font-family: inherit; }
   cursor: pointer;
 }
 .canvas-collapse:hover { color: var(--ink); border-color: var(--ink-faint); }
+.canvas-export {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--rule);
+  background: none;
+  border-radius: 6px;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.canvas-export:hover { color: var(--ink); border-color: var(--ink-faint); }
 
 /* Slim tab that reopens the notes panel once it's collapsed — lives
    outside .canvas-wrap so it stays visible while that panel is hidden. */
@@ -561,12 +575,102 @@ button { font-family: inherit; }
 .canvas svg {
   position: absolute;
   top: 0; left: 0;
-  width: 0; height: 0;
-  overflow: visible; /* link paths can run through negative coordinates */
+  /* Must be non-zero, or Chromium silently refuses to paint anything
+     outside the svg's own box even with overflow:visible below — a real
+     bug that made every link thread invisible from day one. The exact
+     size doesn't matter (overflow:visible does the actual work of letting
+     paths run anywhere, including negative coordinates); 1px just avoids
+     the zero-size case. */
+  width: 1px; height: 1px;
+  overflow: visible;
   pointer-events: none;
+  /* Threads read as running underneath the cards they connect (each one
+     starts from a card's own center) — no z-index needed, since the svg
+     already comes before the cards in DOM order and so paints behind them
+     by default. */
 }
-.canvas svg path { fill: none; stroke: var(--accent); stroke-width: 1.6; opacity: 0.75; }
-.canvas svg path.live { stroke: var(--accent-2); stroke-dasharray: 4 4; }
+/* The real (visible) path itself stays click-through (pointer-events:none)
+   — it sits ON TOP of its .hit twin in paint order (added after it in the
+   DOM), and if it accepted pointer events too it would swallow clicks meant
+   for the wider .hit target beneath it, since both share the exact same
+   centerline geometry. All click handling lives on .hit. */
+.canvas svg path { fill: none; stroke: var(--accent); stroke-width: 1.6; opacity: 0.75; pointer-events: none; }
+.canvas svg path.live { stroke: var(--accent-2); stroke-width: 2.75; stroke-dasharray: 6 4; opacity: 1; filter: drop-shadow(0 0 2px var(--paper)); }
+/* A wide, invisible stroke layered under the real (thin) path so the
+   thread is easy to click without making the visible line itself thick. */
+.canvas svg path.hit { stroke: transparent; stroke-width: 16; fill: none; pointer-events: stroke; cursor: pointer; }
+/* Hovering the (invisible) hit target brightens the real path drawn right
+   after it — .hit can't show its own hover state since it's transparent. */
+.canvas svg path.hit:hover + path { opacity: 1; stroke-width: 2.2; }
+.canvas svg .link-arrow-head { fill: var(--accent); opacity: 0.85; }
+.canvas svg .link-label {
+  font-family: inherit;
+  font-size: 10.5px;
+  font-weight: 600;
+  fill: var(--ink-soft);
+  paint-order: stroke;
+  stroke: var(--paper);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+  text-anchor: middle;
+  pointer-events: auto;
+  cursor: pointer;
+  user-select: none;
+}
+.canvas svg .link-label:hover { fill: var(--ink); }
+
+/* Floating picker shown when a link is created or clicked — plain fixed
+   DOM element (not part of the SVG), positioned near the pointer. */
+.link-menu {
+  position: fixed;
+  z-index: 50;
+  background: var(--card-bg);
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  box-shadow: 0 10px 30px -8px var(--card-shadow);
+  padding: 10px;
+  width: 210px;
+  font-size: 12px;
+}
+.link-menu-types { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.link-menu-type {
+  border: 1px solid var(--rule);
+  background: none;
+  color: var(--ink-soft);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.link-menu-type:hover { border-color: var(--ink-faint); color: var(--ink); }
+.link-menu-type.active { background: var(--accent); border-color: var(--accent); color: var(--paper); }
+.link-menu-custom { margin-bottom: 8px; }
+.link-menu-input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 12px;
+  background: var(--paper);
+  color: var(--ink);
+}
+.link-menu-input:focus { outline: none; border-color: var(--accent); }
+.link-menu-row { display: flex; align-items: center; gap: 6px; border-top: 1px solid var(--rule); padding-top: 8px; }
+.link-menu-action {
+  flex: 1 1 auto;
+  border: none;
+  background: none;
+  color: var(--ink-soft);
+  font-size: 11px;
+  padding: 5px 4px;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.link-menu-action:hover { background: var(--canvas); color: var(--ink); }
+.link-menu-action.danger { color: #c0392b; }
+.link-menu-action.danger:hover { background: rgba(192, 57, 43, 0.1); }
 
 .card {
   position: absolute;
@@ -587,6 +691,15 @@ button { font-family: inherit; }
   font-size: 12.5px;
   line-height: 1.5;
   color: var(--ink);
+}
+.card-image {
+  display: block;
+  width: 100%;
+  max-height: 140px;
+  object-fit: contain;
+  border-radius: 4px;
+  background: var(--paper-alt, rgba(0,0,0,0.03));
+  border: 1px solid var(--rule);
 }
 .card-note {
   margin-top: 9px;

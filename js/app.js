@@ -40,6 +40,7 @@ const themeToggle = document.getElementById('themeToggle');
 const bodyRowEl = document.getElementById('bodyRow');
 const canvasWrapEl = document.getElementById('canvasWrap');
 const canvasCollapseBtn = document.getElementById('canvasCollapseBtn');
+const canvasExportBtn = document.getElementById('canvasExportBtn');
 const canvasExpandTab = document.getElementById('canvasExpandTab');
 
 // A PDF (currentDocId) and a notes canvas (currentCanvasId) are opened
@@ -75,7 +76,9 @@ const canvas = new NotesCanvas(canvasEl, canvasInnerEl, linkGroupEl, canvasEmpty
     }
   },
   onCardClick: (card) => jumpToCard(card),
-  onLinkAdded: (pair) => DB.put('links', { id: DB.uid('lnk'), canvasId: currentCanvasId, a: pair[0], b: pair[1] }),
+  onLinkAdded: (link) => DB.put('links', { ...link, canvasId: currentCanvasId }),
+  onLinkChanged: (link) => DB.put('links', { ...link, canvasId: currentCanvasId }),
+  onLinkRemoved: (linkId) => DB.delete('links', linkId),
 });
 
 const rail = new Rail(railEl, {
@@ -147,7 +150,7 @@ async function openCanvas(canvasId) {
     DB.byIndex('cards', 'canvasId', canvasId),
     DB.byIndex('links', 'canvasId', canvasId),
   ]);
-  const links = linkRecords.map((l) => [l.a, l.b]);
+  const links = linkRecords.map((l) => ({ id: l.id, a: l.a, b: l.b, type: l.type || null }));
   canvas.setCanvas(canvasId, cardRecords, links);
   await refreshHighlights();
 }
@@ -202,6 +205,7 @@ pullBtn.addEventListener('click', async () => {
     page: sel.page,
     rects: sel.rects,
     text: sel.text,
+    image: sel.image,
   });
   pdfView.drawHighlight(card);
   pdfView.clearSelectionUI();
@@ -241,6 +245,23 @@ function setNotesCollapsed(collapsed) {
 })();
 canvasCollapseBtn.addEventListener('click', () => setNotesCollapsed(true));
 canvasExpandTab.addEventListener('click', () => setNotesCollapsed(false));
+
+// -------- export link map --------
+
+canvasExportBtn.addEventListener('click', () => {
+  if (!currentCanvasId) return;
+  const md = canvas.getLinkMapMarkdown();
+  const blob = new Blob([md], { type: 'text/markdown' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const name = (canvasTitleEl.textContent || 'link-map').trim().replace(/[^\w\- ]+/g, '').replace(/\s+/g, '-').toLowerCase() || 'link-map';
+  a.href = url;
+  a.download = name + '-link-map.md';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+});
 
 // -------- theme --------
 
