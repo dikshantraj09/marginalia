@@ -244,6 +244,14 @@ export default class NotesCanvas {
       quote.className = 'card-quote card-image';
       quote.src = c.image;
       quote.alt = 'Excerpt image from page ' + c.page;
+      // Images are natively draggable in every browser by default. Left
+      // as-is, starting a drag on an image card kicks off the browser's
+      // own drag-and-drop gesture (a ghost image that follows the cursor)
+      // *alongside* this file's own pointer-based dragging — the two
+      // fight over the same gesture, and what the person sees is the card
+      // sliding away from the cursor rather than tracking it. Turning off
+      // native drag leaves pointer events as the only thing driving it.
+      quote.draggable = false;
     } else {
       quote = document.createElement('div');
       quote.className = 'card-quote';

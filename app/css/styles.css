@@ -708,6 +708,11 @@ button { font-family: inherit; }
   border-radius: 4px;
   background: var(--paper-alt, rgba(0,0,0,0.03));
   border: 1px solid var(--rule);
+  /* Belt-and-suspenders alongside the `draggable = false` set in JS —
+     Safari in particular still needs this to fully suppress the
+     browser's own native image-drag gesture. */
+  -webkit-user-drag: none;
+  user-drag: none;
 }
 .card-note {
   margin-top: 9px;
