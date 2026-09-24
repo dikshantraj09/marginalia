@@ -6,7 +6,9 @@ import NotesCanvas from './canvas.js';
 const readingEl = document.getElementById('reading');
 const pdfPagesEl = document.getElementById('pdfPages');
 const readingEmptyEl = document.getElementById('readingEmpty');
-const pullBtn = document.getElementById('pullBtn');
+const pullBtn = document.getElementById('pullBtn'); // the floating group container — positioned/shown by PdfView, same as before
+const pullTextBtn = document.getElementById('pullTextBtn');
+const pullImageBtn = document.getElementById('pullImageBtn');
 const docTitleEl = document.getElementById('docTitle');
 const pdfToolbar = document.getElementById('pdfToolbar');
 const tocToggle = document.getElementById('tocToggle');
@@ -201,24 +203,35 @@ async function getOrCreateActiveCanvas() {
 }
 
 // -------- pulling an excerpt onto the canvas --------
+// Two options on the same floating button group: pull the extracted text
+// (falls back to an image automatically if the page has no text layer —
+// e.g. a scanned page), or force an image snapshot of the exact dragged
+// region regardless of what text extraction found — useful on documents
+// like this one, where the text layer exists but its OCR is bad enough
+// that a picture of the original is more useful than the text would be.
 
-pullBtn.addEventListener('mousedown', (e) => e.preventDefault());
-pullBtn.addEventListener('click', async () => {
+async function pullSelection({ asImage }) {
   const sel = pdfView._selection;
   if (!sel || !currentDocId) return;
   const doc = await DB.get('documents', currentDocId);
   await getOrCreateActiveCanvas();
+  const image = asImage ? (pdfView.captureSelectionImage() || sel.image) : sel.image;
   const card = canvas.addExcerptCard({
     docId: currentDocId,
     docName: doc ? doc.name : '',
     page: sel.page,
     rects: sel.rects,
-    text: sel.text,
-    image: sel.image,
+    text: asImage ? null : sel.text,
+    image,
   });
   pdfView.drawHighlight(card);
   pdfView.clearSelectionUI();
-});
+}
+
+pullTextBtn.addEventListener('mousedown', (e) => e.preventDefault());
+pullImageBtn.addEventListener('mousedown', (e) => e.preventDefault());
+pullTextBtn.addEventListener('click', () => pullSelection({ asImage: false }));
+pullImageBtn.addEventListener('click', () => pullSelection({ asImage: true }));
 
 // -------- importing PDFs --------
 
@@ -247,6 +260,19 @@ const railCollapseBtn = document.getElementById('railCollapseBtn');
 const railExpandTab = document.getElementById('railExpandTab');
 
 function setRailCollapsed(collapsed) {
+  // An inline width (set by dragging railResize below) beats the class
+  // rule's `.rail.collapsed { width: 0 }` — inline style always wins over
+  // any selector — so collapsing wouldn't visually do anything once the
+  // rail had ever been manually resized. Clear it going in, restore
+  // whatever was saved going back out.
+  if (collapsed) {
+    railEl.style.width = '';
+  } else {
+    try {
+      const rw = parseFloat(localStorage.getItem('marginalia-rail-width'));
+      if (rw) railEl.style.width = rw + 'px';
+    } catch (err) { /* ignore */ }
+  }
   railEl.classList.toggle('collapsed', collapsed);
   bodyRowEl.classList.toggle('rail-collapsed', collapsed);
   try { localStorage.setItem('marginalia-rail-collapsed', collapsed ? '1' : '0'); } catch (err) { /* ignore */ }
@@ -258,6 +284,91 @@ function setRailCollapsed(collapsed) {
 })();
 railCollapseBtn.addEventListener('click', () => setRailCollapsed(true));
 railExpandTab.addEventListener('click', () => setRailCollapsed(false));
+
+// -------- resizable panes (rail | reading | notes) --------
+// A drag handle between each pair of panes lets the person set their own
+// split instead of living with the fixed 232px / ~48%-52% defaults. Only
+// meaningful in the side-by-side layout — below the "stacked" breakpoint
+// (see styles.css) reading and notes stack vertically and the rail becomes
+// a full-height drawer, where a horizontal pixel width doesn't apply.
+
+const railResizeEl = document.getElementById('railResize');
+const canvasResizeEl = document.getElementById('canvasResize');
+const stackQuery = window.matchMedia('(max-width: 640px)');
+const isStacked = () => stackQuery.matches;
+
+function wirePaneResize(handleEl, { getMin, getMax, onDrag, onEnd }) {
+  let dragging = false;
+  handleEl.addEventListener('pointerdown', (e) => {
+    if (isStacked() || e.button !== undefined && e.button !== 0) return;
+    dragging = true;
+    handleEl.classList.add('dragging');
+    handleEl.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+  handleEl.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    const min = getMin();
+    const max = getMax();
+    onDrag(Math.min(max, Math.max(min, e.clientX)));
+  });
+  const stop = () => {
+    if (!dragging) return;
+    dragging = false;
+    handleEl.classList.remove('dragging');
+    if (onEnd) onEnd();
+  };
+  handleEl.addEventListener('pointerup', stop);
+  handleEl.addEventListener('pointercancel', stop);
+}
+
+wirePaneResize(railResizeEl, {
+  getMin: () => railEl.getBoundingClientRect().left + 160,
+  getMax: () => railEl.getBoundingClientRect().left + 420,
+  onDrag: (clientX) => {
+    railEl.style.width = (clientX - railEl.getBoundingClientRect().left) + 'px';
+  },
+  onEnd: () => {
+    try { localStorage.setItem('marginalia-rail-width', Math.round(railEl.getBoundingClientRect().width)); } catch (err) { /* ignore */ }
+  },
+});
+
+wirePaneResize(canvasResizeEl, {
+  getMin: () => readingEl.getBoundingClientRect().left + 280,
+  getMax: () => bodyRowEl.getBoundingClientRect().right - 280,
+  onDrag: (clientX) => {
+    readingEl.style.flex = '0 0 ' + (clientX - readingEl.getBoundingClientRect().left) + 'px';
+  },
+  onEnd: () => {
+    try { localStorage.setItem('marginalia-reading-width', Math.round(readingEl.getBoundingClientRect().width)); } catch (err) { /* ignore */ }
+  },
+});
+
+// Reapply a saved reading-pane width whenever the layout is side-by-side —
+// on load, and again if the window widens back out of the stacked phone
+// layout (where the inline flex-basis is cleared below, since a pixel
+// WIDTH there would get reinterpreted as a HEIGHT once .body-row switches
+// to flex-direction: column).
+function applyReadingWidth() {
+  if (isStacked()) {
+    readingEl.style.flex = '';
+    return;
+  }
+  try {
+    const dw = parseFloat(localStorage.getItem('marginalia-reading-width'));
+    if (dw) readingEl.style.flex = '0 0 ' + dw + 'px';
+  } catch (err) { /* ignore */ }
+}
+applyReadingWidth();
+stackQuery.addEventListener('change', applyReadingWidth);
+
+(function initRailWidth() {
+  if (isStacked() || railEl.classList.contains('collapsed')) return;
+  try {
+    const rw = parseFloat(localStorage.getItem('marginalia-rail-width'));
+    if (rw) railEl.style.width = rw + 'px';
+  } catch (err) { /* ignore */ }
+})();
 
 // -------- notes panel collapse (a "just read" mode) --------
 

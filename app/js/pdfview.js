@@ -678,7 +678,17 @@ export default class PdfView {
     if (!result) return;
 
     const pageNum = parseInt(d.pageWrap.dataset.page, 10);
-    this._selection = { page: pageNum, rects: result.rects, text: result.text, image: result.image || null };
+    this._selection = {
+      page: pageNum,
+      rects: result.rects,
+      text: result.text,
+      image: result.image || null,
+      // Kept so captureSelectionImage() can crop the *actual dragged
+      // rectangle* on demand (the "Image" pull button), independent of
+      // whatever text extraction did or didn't find inside it.
+      _pageWrap: d.pageWrap,
+      _rect: d.rectPageRelative,
+    };
     this._positionPullBtn(d.pageWrap, result.rects);
     if (this.onSelectionReady) this.onSelectionReady(this._selection);
   }
@@ -828,6 +838,25 @@ export default class PdfView {
     return { text: textParts.join(' ').replace(/\s+/g, ' ').trim(), rects };
   }
 
+  // Public counterpart to the automatic image fallback above: forces the
+  // *current* marquee selection to be captured as a snapshot image of the
+  // dragged rectangle, regardless of whether text extraction succeeded —
+  // the "Image" pull button, for when the text layer is present but junk
+  // (e.g. this document's OCR quality) and a picture of the original is
+  // more useful than the garbled text would be.
+  captureSelectionImage() {
+    const sel = this._selection;
+    if (!sel || !sel._pageWrap || !sel._rect) return null;
+    const wrapRect = sel._pageWrap.getBoundingClientRect();
+    const rectPct = {
+      xPct: sel._rect.left / wrapRect.width,
+      yPct: sel._rect.top / wrapRect.height,
+      wPct: sel._rect.width / wrapRect.width,
+      hPct: sel._rect.height / wrapRect.height,
+    };
+    return this._cropPageImage(sel._pageWrap, rectPct);
+  }
+
   // No text spans fell inside the drag — most likely a scanned/photographed
   // page with no extractable text at all, where the row-clustering logic
   // above has nothing to work with. Rather than silently discarding the
@@ -880,7 +909,7 @@ export default class PdfView {
     const firstLeftClient = wrapRect.left + first.xPct * wrapRect.width;
     const firstBottomClient = firstTopClient + first.hPct * wrapRect.height;
 
-    const btnWidth = 150; // approx — clamped so it never runs off the right edge
+    const btnWidth = 230; // approx width of the Text+Image button group — clamped so it never runs off the right edge
     const left = Math.min(
       Math.max(8, firstLeftClient - readingRect.left),
       readingRect.width - btnWidth

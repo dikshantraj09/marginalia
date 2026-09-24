@@ -46,6 +46,7 @@
           <div class="rail-tree" id="notesGroup"></div>
         </div>
       </nav>
+      <div class="pane-resize" id="railResize" title="Drag to resize"></div>
 
       <main class="reading" id="reading">
         <div class="pdf-toolbar" id="pdfToolbar">
@@ -85,9 +86,13 @@
             <button id="emptyImportBtn">＋ Import PDF</button>
           </div>
           <div id="pdfPages"></div>
-          <button class="pull-btn" id="pullBtn">＋ Pull to canvas</button>
+          <div class="pull-btn" id="pullBtn">
+            <button class="pull-btn-opt" id="pullTextBtn" title="Pull the selected text to canvas">＋ Text</button>
+            <button class="pull-btn-opt" id="pullImageBtn" title="Pull a snapshot image of the selection to canvas">＋ Image</button>
+          </div>
         </div>
       </main>
+      <div class="pane-resize" id="canvasResize" title="Drag to resize"></div>
 
       <section class="canvas-wrap" id="canvasWrap">
         <div class="canvas-head">

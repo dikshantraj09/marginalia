@@ -53,6 +53,38 @@
 
 body { background: var(--paper); }
 
+/* ---------- scrollbars ---------- */
+/* Applies everywhere a native scrollbar can appear (the rail, the reading
+   pane, the table-of-contents panel, a capped .card-quote, ...) so none of
+   them fall back to the browser's default — full-width, stark white even
+   in dark mode, as seen on the card-quote overflow above. Firefox gets the
+   two-value shorthand; WebKit/Blink (Chrome, Safari, Edge) need the
+   pseudo-elements, which have no per-element shorthand, so this is scoped
+   with a universal selector rather than repeated on every scrollable class. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--ink-faint) transparent;
+}
+*::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background-color: var(--ink-faint);
+  border-radius: 20px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background-color: var(--ink-soft);
+}
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 .theme-toggle {
   margin-left: auto;
   border: 1px solid var(--rule);
@@ -99,6 +131,13 @@ button { font-family: inherit; }
   border-bottom: 1px solid var(--rule);
   flex-shrink: 0;
   background: var(--paper);
+  /* Higher than the phone-width rail drawer's z-index:40 (see responsive
+     section) so the ☰ toggle that opens/closes that drawer always stays
+     above it, rather than the drawer's own top:0 painting over it — which
+     was the "no collapse button" bug on narrow windows: the only control
+     was still there, just invisible underneath the open drawer. */
+  position: relative;
+  z-index: 41;
 }
 .wordmark { font-family: 'Fraunces', serif; font-weight: 600; font-size: 19px; }
 .wordmark em { color: var(--accent); font-style: italic; }
@@ -269,6 +308,33 @@ button { font-family: inherit; }
   padding: 6px 7px;
 }
 .drop-target { outline: 1.5px dashed var(--accent); outline-offset: -2px; background: var(--accent-soft); }
+
+/* ---------- pane resize handles ---------- */
+/* Thin draggable dividers between rail|reading and reading|notes, wired up
+   in app.js. Widened via a transparent ::before so the actual hit target
+   is comfortable without the visible bar itself looking heavy. Hidden
+   whenever there's nothing to drag against (the rail collapsed, the notes
+   panel collapsed, or the layout has stacked vertically on a narrow
+   screen — see the responsive section). */
+.pane-resize {
+  position: relative;
+  flex-shrink: 0;
+  width: 1px;
+  background: var(--rule);
+  cursor: col-resize;
+  z-index: 3;
+}
+.pane-resize::before {
+  content: '';
+  position: absolute;
+  top: 0; bottom: 0;
+  left: -4px; right: -4px;
+}
+.pane-resize:hover, .pane-resize.dragging { background: var(--accent); }
+.rail.collapsed + .pane-resize,
+.body-row.notes-collapsed #canvasResize {
+  display: none;
+}
 
 /* ---------- reading pane ---------- */
 .reading {
@@ -546,11 +612,22 @@ button { font-family: inherit; }
   margin: -18px 0 24px;
 }
 
+/* .pull-btn is now the floating group's container (positioned/shown by
+   pdfview.js exactly as the single button used to be) with two options
+   inside it — pull the excerpt as plain text, or as a snapshot image of
+   the marquee'd region regardless of whether text was found there. */
 .pull-btn {
   position: absolute;
   display: none;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
+  z-index: 20;
+  white-space: nowrap;
+}
+.pull-btn-opt {
+  display: flex;
+  align-items: center;
+  gap: 5px;
   background: var(--ink);
   color: var(--paper);
   font-size: 12px;
@@ -558,12 +635,11 @@ button { font-family: inherit; }
   padding: 7px 11px;
   border-radius: 7px;
   cursor: pointer;
-  z-index: 20;
   box-shadow: 0 6px 16px -6px var(--card-shadow);
   white-space: nowrap;
   border: none;
 }
-.pull-btn:hover { background: var(--accent); color: var(--ink); }
+.pull-btn-opt:hover { background: var(--accent); color: var(--ink); }
 
 /* ---------- canvas ---------- */
 .canvas-wrap { flex: 1 1 52%; min-width: 0; display: flex; flex-direction: column; transition: flex-basis .16s ease; }
@@ -918,7 +994,27 @@ button { font-family: inherit; }
 .modal-actions .modal-ok.danger:hover { filter: brightness(1.08); }
 
 /* ---------- responsive ---------- */
-@media (max-width: 900px) {
+
+/* "Tablet" range (641–900px): still the full side-by-side, resizable
+   3-pane layout — just tighter, so a couple of the wider toolbar bits get
+   dropped. This tier used to not exist at all: anything under 900px went
+   straight to the stacked/drawer phone layout below, which is why there
+   was no way to collapse the rail without losing it behind an overlay —
+   the rail/notes collapse buttons and the resize handles above all keep
+   working exactly as they do on desktop. */
+@media (max-width: 900px) and (min-width: 641px) {
+  .doc-title { max-width: 22vw; }
+  .canvas-head .hint { display: none; }
+}
+
+/* "Phone" range (≤640px): not enough width for a resizable 3-pane layout
+   at all — reading and notes stack vertically, resize handles hide (there's
+   nothing horizontal left to drag), and the rail becomes a full-height
+   overlay drawer opened via the ☰ toggle in the topbar. The topbar keeps a
+   higher z-index than the drawer (set globally, above) specifically so
+   that toggle button stays clickable — and visible — once the drawer is
+   open, instead of the drawer's own top:0 covering it. */
+@media (max-width: 640px) {
   .rail-toggle { display: inline-block; }
   .rail {
     position: fixed; top: 0; bottom: 0; left: 0; z-index: 40;
@@ -926,9 +1022,10 @@ button { font-family: inherit; }
     box-shadow: 0 0 24px var(--card-shadow);
   }
   .rail.open { transform: translateX(0); }
-  .rail.collapsed { width: 232px; } /* the always-on-top toggle button above already handles mobile show/hide */
+  .rail.collapsed { width: 232px; } /* the ☰ toggle above already handles show/hide at this width */
   .rail-head { display: none; } /* redundant with the ☰ Folders toggle in the topbar at this width */
   .rail-expand-tab { display: none !important; }
+  .pane-resize { display: none; } /* nothing side-by-side left to drag once stacked */
   .body-row { flex-direction: column; }
   .reading { border-right: none; border-bottom: 1px solid var(--rule); flex: 1 1 auto; max-height: 50vh; }
   .canvas-wrap { flex: 1 1 auto; }
