@@ -209,6 +209,13 @@ export default class NotesCanvas {
       // on the canvas, which retargets the resulting `click` event to the
       // canvas div and the thread's click handler would never fire.
       if (e.target.closest && e.target.closest('.hit, .link-label')) return;
+      // A card drag is already in progress on a different pointer (e.g. a
+      // resting second finger on a touchscreen landed on empty canvas
+      // background). Bail out so this stray touch doesn't start a pan —
+      // panning would shift `this.pan`, which the dragged card's rendered
+      // position is relative to, causing it to jitter under the finger
+      // actually moving it. See the `_draggingCard` flag in `_wireCard`.
+      if (this._draggingCard) return;
       try { this.canvasEl.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       this._closeLinkMenu();
@@ -383,6 +390,19 @@ export default class NotesCanvas {
       origX = c.x; origY = c.y;
       try { el.setPointerCapture(e.pointerId); } catch (err) { /* ignore — synthetic/edge pointer events */ }
       this._closeLinkMenu();
+      // The canvas-level pan/pinch handler (_wirePanning) only ignores a
+      // touch that LANDS on a card — it has no way to know a card drag is
+      // already under way when a second, stray touch (a resting thumb,
+      // most often) lands on the empty background elsewhere. On a
+      // touchscreen that second contact point is common enough that it
+      // isn't really an edge case: without this flag it silently starts a
+      // pan gesture at the same time as this drag, and since a pan moves
+      // `this.pan` — which every card's screen position is rendered
+      // relative to — the card being dragged visibly jitters/drifts on
+      // top of the finger actually moving it. This flag lets the pan
+      // handler bail out for as long as any card drag is in progress,
+      // regardless of which element a second touch happens to land on.
+      this._draggingCard = true;
     });
     el.addEventListener('pointermove', (e) => {
       if (!dragging) return;
@@ -397,13 +417,22 @@ export default class NotesCanvas {
       el.style.top = c.y + 'px';
       this._drawLinks();
     });
-    el.addEventListener('pointerup', () => {
+    const endDrag = () => {
       if (dragging && !moved) {
         if (this.cb.onCardClick) this.cb.onCardClick(c);
       }
       if (dragging && moved) this._persistCard(c);
       dragging = false;
-    });
+      this._draggingCard = false;
+    };
+    el.addEventListener('pointerup', endDrag);
+    // A touch drag can be cancelled by the OS mid-gesture (an incoming
+    // notification, an edge-swipe system gesture) without ever firing
+    // pointerup — treated the same as pointerup elsewhere in this file for
+    // exactly that reason. Without also clearing `_draggingCard` here, a
+    // cancelled card drag would leave canvas panning permanently disabled
+    // for the rest of the session (see the flag's own comment above).
+    el.addEventListener('pointercancel', endDrag);
 
     delBtn.addEventListener('click', () => this._removeCard(c));
 
