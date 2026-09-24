@@ -186,6 +186,19 @@ async function openCanvas(canvasId) {
   ]);
   const links = linkRecords.map((l) => ({ id: l.id, a: l.a, b: l.b, type: l.type || null }));
   canvas.setCanvas(canvasId, cardRecords, links);
+  // setCanvas() above always resets to 100% — the right call on desktop,
+  // where a 200px-wide card is a normal size against a canvas that's
+  // usually 800px+. On a phone-width screen that same card renders at
+  // barely half the screen's width, so opening Notes shows one narrow
+  // column of tiny text with a wide, empty (if visually consistent) dot
+  // grid on either side — cards aren't unusably small so much as the
+  // default zoom just isn't sized for how much of the screen is actually
+  // available. Scale up so a card comfortably fills most of the width
+  // instead of requiring a pinch-zoom before the first note is readable.
+  if (isStacked()) {
+    const available = canvas.canvasEl.clientWidth;
+    canvas.setZoom(Math.min(2, Math.max(1, (available * 0.82) / 200)));
+  }
   await refreshHighlights();
 }
 
@@ -393,6 +406,10 @@ stackQuery.addEventListener('change', (e) => {
   if (e.matches && currentDocId && pdfView.pdf) {
     const available = pdfView.scrollHost.clientWidth - 52;
     pdfView.setZoom(Math.max(0.5, Math.min(1, available / 640)));
+  }
+  if (e.matches && currentCanvasId) {
+    const available = canvas.canvasEl.clientWidth;
+    canvas.setZoom(Math.min(2, Math.max(1, (available * 0.82) / 200)));
   }
 });
 
