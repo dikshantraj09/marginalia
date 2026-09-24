@@ -137,7 +137,20 @@ async function openDocument(docId) {
     const count = pdfView.getPageCount();
     pageCountEl.textContent = count;
     pageInput.value = 1;
-    zoomLevelEl.textContent = '100%';
+    // pdfView.load() already reset zoom to 100%, which is the right default
+    // on desktop/tablet — but a page rendered at its native ~640px CSS
+    // width is wider than the entire phone viewport, so at 100% the user
+    // opens a document to find its first lines sliced off the right edge
+    // with nothing to indicate the page can be scrolled sideways to see the
+    // rest. Fit the page to whatever width is actually available instead,
+    // so the whole page is visible (and readable) the moment it opens; the
+    // zoom controls still work normally from there for reading up close.
+    if (isStacked()) {
+      const available = pdfView.scrollHost.clientWidth - 52; // minus reading-scroll's 26px side padding
+      pdfView.setZoom(Math.max(0.5, Math.min(1, available / 640)));
+    } else {
+      zoomLevelEl.textContent = '100%';
+    }
     searchInput.value = '';
     searchCountEl.textContent = '';
     await populateToc();
@@ -370,7 +383,18 @@ function applyReadingWidth() {
   } catch (err) { /* ignore */ }
 }
 applyReadingWidth();
-stackQuery.addEventListener('change', applyReadingWidth);
+stackQuery.addEventListener('change', (e) => {
+  applyReadingWidth();
+  // Rotating a phone from portrait to landscape (or resizing a window
+  // across the 640px line with a document open) can cross into the
+  // stacked layout after the doc already opened at desktop's 100% zoom —
+  // refit it the same way openDocument() does initially, so the page
+  // doesn't suddenly get clipped off the right edge.
+  if (e.matches && currentDocId && pdfView.pdf) {
+    const available = pdfView.scrollHost.clientWidth - 52;
+    pdfView.setZoom(Math.max(0.5, Math.min(1, available / 640)));
+  }
+});
 
 (function initRailWidth() {
   if (isStacked() || railEl.classList.contains('collapsed')) return;

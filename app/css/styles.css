@@ -1073,7 +1073,18 @@ button { font-family: inherit; }
 @media (max-width: 640px) {
   .rail-toggle { display: inline-block; }
   .rail {
-    position: fixed; top: 0; bottom: 0; left: 0; z-index: 40;
+    /* top:58px, not 0 — the topbar is `position:relative` with a HIGHER
+       z-index (41 vs. this drawer's 40) specifically so its own ☰ toggle
+       stays clickable and visible over the open drawer (see the topbar
+       rule above). But that also means the topbar visually paints over
+       whatever the drawer renders underneath it, so starting the drawer's
+       own box at the actual top of the viewport just hides its first ~58px
+       (the topbar's rendered height at this width) behind the topbar for
+       no benefit — the folder list's first entries were getting clipped
+       behind it. Starting the drawer below the topbar instead means every
+       pixel of it is actually visible, and there's no interactive area
+       hidden under an opaque sibling for a tap to miss. */
+    position: fixed; top: 58px; bottom: 0; left: 0; z-index: 40;
     transform: translateX(-100%); transition: transform .2s ease;
     box-shadow: 0 0 24px var(--card-shadow);
   }
@@ -1084,7 +1095,52 @@ button { font-family: inherit; }
   .pane-resize { display: none; } /* nothing side-by-side left to drag once stacked */
   .body-row { flex-direction: column; }
   .reading { border-right: none; border-bottom: 1px solid var(--rule); flex: 1 1 auto; max-height: 50vh; }
+  /* When Notes is collapsed there's nothing stacked below the reading pane
+     any more, so the 50vh cap (sized for the split view) just leaves a dead
+     empty gap at the bottom of the screen — let it fill instead. */
+  .body-row.notes-collapsed .reading { max-height: none; }
   .canvas-wrap { flex: 1 1 auto; }
   .doc-title { display: none; }
   .canvas-head .hint { display: none; }
+
+  /* .toc-panel/.toc-backdrop are `position: absolute` against `.reading`
+     (their nearest positioned ancestor) so they can sit correctly inset
+     within the split view on desktop/tablet. But `.reading` is capped to
+     max-height:50vh here, and has overflow:hidden, so left as `absolute`
+     the panel/backdrop would be clipped to just the top half of the
+     screen — a modal drawer that stops partway down with the Notes pane
+     exposed (and un-dimmed) underneath it. Promoting them to `fixed` here
+     escapes that clipping so they cover the full viewport, the way `.rail`
+     already does for the folder drawer at this width. */
+  /* Same "start below the topbar, not under it" reasoning as `.rail`
+     above applies here too — without it the panel's own Contents/
+     Bookmarks tabs render underneath the higher-z-index topbar and can't
+     be tapped. */
+  .toc-backdrop, .toc-panel { position: fixed; top: 58px; }
+
+  /* The floating "reopen Notes" tab is positioned relative to `.body-row`,
+     which spans the *whole* stacked column (reading + notes), not just one
+     pane. On desktop that's correct — right:0 + vertical centering puts it
+     on the shared edge between two side-by-side panes. Stacked on phone,
+     that same math centers it over the middle of the *reading* pane's own
+     content, floating on top of PDF text with nothing to explain what it
+     is. Move it to a small pill anchored to the bottom-right corner
+     instead, out of the way of the page, still reachable with a thumb. */
+  .canvas-expand-tab {
+    top: auto; right: 14px; bottom: 14px; left: auto;
+    transform: none;
+    flex-direction: row;
+    border-radius: 20px;
+    box-shadow: 0 6px 16px -6px var(--card-shadow);
+  }
+
+  /* Toolbar buttons are sized for a mouse cursor (28px / 22px) everywhere
+     else; on a touchscreen those fall under the ~44px target Apple/Google
+     both recommend, and packed at 4px apart they're an easy mis-tap. Widen
+     the tap targets and give them a little more breathing room without
+     changing anything about the desktop/tablet toolbar. */
+  .pdf-toolbar { gap: 7px; padding: 9px 10px; }
+  .tb-btn { width: 34px; height: 34px; font-size: 16px; }
+  .tb-btn.small { width: 28px; height: 28px; font-size: 14px; }
+  .tb-search { height: 34px; }
 }
