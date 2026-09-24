@@ -689,12 +689,28 @@ export default class PdfView {
     this._drag = null;
 
     const info = this.pageWraps.get(parseInt(d.pageWrap.dataset.page, 10));
-    if (info) info.marqueeEl.style.display = 'none';
 
-    if (!d.committed || !d.rectPageRelative) return; // tap, or a gesture we treated as scroll
+    if (!d.committed || !d.rectPageRelative) {
+      // Tap, or a gesture we treated as scroll -- nothing was ever drawn
+      // for this one, so there's nothing to leave up.
+      if (info) info.marqueeEl.style.display = 'none';
+      return;
+    }
 
     const result = this._computeSelectionFromRect(d.pageWrap, d.rectPageRelative);
-    if (!result) return;
+    if (!result) {
+      if (info) info.marqueeEl.style.display = 'none'; // drag was too small / found nothing selectable
+      return;
+    }
+
+    // A real selection: leave the marquee box drawn exactly where the drag
+    // left it, instead of hiding it the instant the finger/mouse lifts.
+    // It's the visual anchor for "this is what + Text / + Image will act
+    // on," and it should stay persistent through scrolling/zooming until
+    // the person actually acts on it -- pullSelection() calls
+    // clearSelectionUI() (which hides every marquee box) once they click
+    // + Text or + Image, and starting a fresh drag clears it the same way,
+    // just above in this file.
 
     const pageNum = parseInt(d.pageWrap.dataset.page, 10);
     this._selection = {
