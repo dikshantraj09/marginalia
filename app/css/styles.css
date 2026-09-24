@@ -128,7 +128,21 @@ button { font-family: inherit; }
 .app {
   display: flex;
   flex-direction: column;
+  /* `100vh` on a real mobile browser is measured against the LARGEST
+     possible viewport — the height you'd get if the address bar/bottom nav
+     were fully hidden — not the shorter area actually visible while they're
+     showing. Desktop Chrome's device-mode emulator has no such chrome to
+     collapse, so it always renders the full 100vh and never reveals the
+     gap; a real phone does, and since html/body below are overflow:hidden
+     (this layout manages its own internal scrolling, pane by pane, rather
+     than letting the whole page scroll) there's no page-level scroll to
+     reach whatever spills past the real visible edge — it's just gone.
+     `100dvh` tracks the browser's actual current visible area instead, so
+     nothing sits below the fold. Kept 100vh first as a fallback for older
+     browsers that don't understand dvh (they simply ignore the second
+     declaration and keep the first). */
   height: 100vh;
+  height: 100dvh;
 }
 
 /* ---------- top bar ---------- */

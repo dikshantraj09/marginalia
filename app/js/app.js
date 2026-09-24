@@ -409,6 +409,24 @@ stackQuery.addEventListener('change', (e) => {
 function setNotesCollapsed(collapsed) {
   canvasWrapEl.classList.toggle('collapsed', collapsed);
   bodyRowEl.classList.toggle('notes-collapsed', collapsed);
+  // Dragging the reading/notes divider (wirePaneResize above) sets an
+  // inline `flex: 0 0 <px>` directly on .reading, which — being inline —
+  // outranks the CSS class rules either side of it here: neither the
+  // default `.reading{flex:1 1 48%}` nor `.canvas-wrap.collapsed{flex:0 0
+  // 0}` can override it. So collapsing Notes after ever resizing the
+  // reading pane just shrank Notes to nothing while reading stayed pinned
+  // at its last dragged width, leaving the freed space as a dead, empty
+  // gap between the two — not actually part of either pane. Clearing the
+  // inline width on collapse lets `.reading{flex:1 1 48%}` take over and
+  // fill the row properly; reapplying the saved width on expand restores
+  // the split exactly where the user left it.
+  if (!isStacked()) {
+    if (collapsed) {
+      readingEl.style.flex = '';
+    } else {
+      applyReadingWidth();
+    }
+  }
   try { localStorage.setItem('marginalia-notes-collapsed', collapsed ? '1' : '0'); } catch (err) { /* ignore */ }
 }
 (function initNotesCollapsed() {
