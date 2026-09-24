@@ -1127,10 +1127,21 @@ button { font-family: inherit; }
      is. Move it to a small pill anchored to the bottom-right corner
      instead, out of the way of the page, still reachable with a thumb. */
   .canvas-expand-tab {
+    /* Fully reset from the desktop version rather than layering on top of
+       it: that one is a narrow vertical tab flush against the pane edge
+       (padding 14px 7px, border-right:none, radius only on the left
+       corners so it reads as part of that edge). Floating free as a
+       corner pill here, those same values left a flat, borderless seam
+       on the right side instead of a clean rounded cap — this sets every
+       property the shape depends on explicitly instead of assuming what's
+       left over from the desktop rule still fits. */
     top: auto; right: 14px; bottom: 14px; left: auto;
     transform: none;
     flex-direction: row;
-    border-radius: 20px;
+    gap: 6px;
+    border: 1px solid var(--rule);
+    border-radius: 999px;
+    padding: 10px 16px 10px 14px;
     box-shadow: 0 6px 16px -6px var(--card-shadow);
   }
 
