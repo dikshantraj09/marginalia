@@ -101,6 +101,14 @@ body { background: var(--paper); }
   flex-shrink: 0;
 }
 .theme-toggle:hover { color: var(--ink); border-color: var(--ink-faint); }
+/* #tourHelpBtn reuses this class for its icon-button look, but flexbox
+   splits available free space across EVERY auto margin in the row — with
+   two `.theme-toggle` buttons both carrying `margin-left: auto`, the free
+   space was getting divided between them instead of collapsing to one
+   gap, so the theme toggle drifted out to roughly the middle of the
+   topbar instead of sitting next to the help/import buttons. Only the
+   first icon button in the group should actually open the gap. */
+#tourHelpBtn { margin-left: 0; }
 .theme-toggle .sun { display: none; }
 :root[data-theme="dark"] .theme-toggle .moon { display: none; }
 :root[data-theme="dark"] .theme-toggle .sun { display: block; }
