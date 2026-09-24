@@ -106,12 +106,21 @@ body { background: var(--paper); }
 :root[data-theme="dark"] .theme-toggle .sun { display: block; }
 
 * { box-sizing: border-box; }
-html, body { height: 100%; margin: 0; }
+/* `overflow: hidden` was only on body, not html. That's normally enough to
+   stop the page scrolling — until something calls scrollIntoView() on an
+   element inside a deeply-nested scroll container (goToPage jumping to a
+   distant page in a big PDF, for instance): when the browser walks up the
+   ancestor chain looking for room to satisfy the scroll, a hidden-overflow
+   body doesn't stop it from landing on the *next* scrollable box up,
+   which was the <html> element itself, still at its default `visible`
+   overflow. The whole .app flex column would get shoved up by however far
+   html scrolled, taking the topbar off the top of the screen with it —
+   the "breaking UI" report. Locking overflow on both closes that gap. */
+html, body { height: 100%; margin: 0; overflow: hidden; }
 body {
   background: var(--paper);
   color: var(--ink);
   font-family: 'IBM Plex Sans', system-ui, sans-serif;
-  overflow: hidden;
 }
 
 button { font-family: inherit; }
@@ -455,10 +464,7 @@ button { font-family: inherit; }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 14px 10px;
-  font-family: 'Fraunces', serif;
-  font-style: italic;
-  font-size: 16px;
+  padding: 10px 8px 10px 14px;
   border-bottom: 1px solid var(--rule);
   flex-shrink: 0;
 }
@@ -470,6 +476,16 @@ button { font-family: inherit; }
   font-size: 13px;
 }
 .toc-head button:hover { color: var(--ink); }
+.toc-tabs { display: flex; gap: 4px; }
+.toc-tab {
+  font-family: 'Fraunces', serif;
+  font-style: italic;
+  font-size: 14.5px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  color: var(--ink-faint) !important;
+}
+.toc-tab.active { color: var(--ink) !important; background: var(--accent-soft); }
 .toc-list { overflow-y: auto; padding: 8px; flex: 1; }
 .toc-item {
   font-size: 13px;
@@ -483,6 +499,46 @@ button { font-family: inherit; }
 }
 .toc-item:hover { background: var(--accent-soft); color: var(--ink); }
 .toc-empty { font-size: 12px; color: var(--ink-faint); font-style: italic; padding: 8px; }
+
+.bookmark-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ink-soft);
+  padding: 7px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.bookmark-item:hover { background: var(--accent-soft); color: var(--ink); }
+.bookmark-item .page-tag {
+  flex-shrink: 0;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 4px;
+  padding: 2px 5px;
+}
+.bookmark-item .label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bookmark-item .del {
+  flex-shrink: 0;
+  color: var(--ink-faint);
+  opacity: 0;
+  font-size: 13px;
+  padding: 2px 4px;
+}
+.bookmark-item:hover .del { opacity: 1; }
+.bookmark-item .del:hover { color: var(--danger); }
+
+/* Filled/active star for "this page is bookmarked" */
+#bookmarkPageToggle.active { color: var(--accent); }
+#bookmarkPageToggle.active svg { fill: var(--accent); }
 
 /* ---------- search highlights ---------- */
 .search-layer {

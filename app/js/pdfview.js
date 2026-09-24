@@ -284,10 +284,29 @@ export default class PdfView {
     return this.pdf ? this.pdf.numPages : 0;
   }
 
+  // Scrolls `this.scrollHost` (the reading pane's own internal scroll
+  // container) so `el` lands at the top or center of it — by computing the
+  // offset directly and calling scrollBy/scrollTo on scrollHost itself,
+  // never the native el.scrollIntoView(). scrollIntoView walks up every
+  // scrollable ancestor to satisfy the requested alignment, and on a page
+  // far into a large document it could also nudge <html> itself (the
+  // outermost scrollable box once .reading-scroll's own scroll is
+  // exhausted or still settling from a layout shift), shoving the whole
+  // app — topbar included — up and off-screen. This keeps the scroll
+  // fully contained to the one pane it's meant for.
+  _scrollIntoReadingPane(el, block) {
+    const hostRect = this.scrollHost.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    const delta = block === 'center'
+      ? (elRect.top + elRect.height / 2) - (hostRect.top + hostRect.height / 2)
+      : elRect.top - hostRect.top;
+    this.scrollHost.scrollBy({ top: delta, behavior: 'smooth' });
+  }
+
   goToPage(pageNum) {
     const info = this.pageWraps.get(pageNum);
     if (!info) return;
-    info.wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    this._scrollIntoReadingPane(info.wrap, 'start');
     this._ensureRendered(pageNum);
   }
 
@@ -524,7 +543,7 @@ export default class PdfView {
       // normally happen since callers await it first) — fall back to just
       // bringing the page into view.
       const info = this.pageWraps.get(m.page);
-      if (info) info.wrap.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      if (info) this._scrollIntoReadingPane(info.wrap, 'center');
       return;
     }
     // Not scrollIntoView: with overflow-x set on this pane (for wide pages
@@ -968,7 +987,7 @@ export default class PdfView {
   async jumpToCard(card) {
     const info = this.pageWraps.get(card.page);
     if (!info) return;
-    info.wrap.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    this._scrollIntoReadingPane(info.wrap, 'center');
     // The target page may still be an unrendered placeholder (far outside
     // the lazy observer's margin) — force it to render now rather than
     // waiting for the scroll to carry it into that margin naturally, so the

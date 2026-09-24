@@ -16,6 +16,11 @@ const tocClose = document.getElementById('tocClose');
 const tocBackdrop = document.getElementById('tocBackdrop');
 const tocPanel = document.getElementById('tocPanel');
 const tocListEl = document.getElementById('tocList');
+const tocTabContents = document.getElementById('tocTabContents');
+const tocTabBookmarks = document.getElementById('tocTabBookmarks');
+const bookmarksListEl = document.getElementById('bookmarksList');
+const bookmarkPageToggle = document.getElementById('bookmarkPageToggle');
+const downloadPdfBtn = document.getElementById('downloadPdfBtn');
 const zoomOutBtn = document.getElementById('zoomOut');
 const zoomInBtn = document.getElementById('zoomIn');
 const zoomLevelEl = document.getElementById('zoomLevel');
@@ -62,6 +67,7 @@ const pdfView = new PdfView(
 );
 pdfView.onPageChange = (pageNum) => {
   if (document.activeElement !== pageInput) pageInput.value = pageNum;
+  refreshBookmarkStar();
 };
 pdfView.onSearchResults = (active, total) => {
   if (total === null) { searchCountEl.textContent = 'Searching…'; return; } // large-doc scan in progress
@@ -95,9 +101,11 @@ const canvas = new NotesCanvas(canvasEl, canvasInnerEl, linkGroupEl, canvasEmpty
 const rail = new Rail(railEl, {
   onOpenDoc: (docId) => openDocument(docId),
   onOpenCanvas: (canvasId) => openCanvas(canvasId),
-  onDocDeleted: (docId) => {
+  onDocDeleted: async (docId) => {
     if (currentCanvasId) canvas.removeCardsByDoc(docId);
     if (docId === currentDocId) closeDocument();
+    const orphaned = await DB.byIndex('bookmarks', 'docId', docId);
+    for (const bm of orphaned) await DB.delete('bookmarks', bm.id);
   },
   onCanvasDeleted: (canvasId) => {
     if (canvasId === currentCanvasId) closeCanvas();
@@ -133,6 +141,7 @@ async function openDocument(docId) {
     searchInput.value = '';
     searchCountEl.textContent = '';
     await populateToc();
+    await loadBookmarks(docId);
   } catch (err) {
     // pdfView already shows an inline error in the reading pane
     pdfToolbar.classList.remove('visible');
@@ -148,6 +157,7 @@ function closeDocument() {
   rail.setActiveDoc(null);
   pdfToolbar.classList.remove('visible');
   closeToc();
+  loadBookmarks(null);
 }
 
 async function openCanvas(canvasId) {
@@ -402,6 +412,26 @@ canvasExportBtn.addEventListener('click', () => {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 });
 
+// -------- download the open PDF --------
+
+downloadPdfBtn.addEventListener('click', async () => {
+  if (!currentDocId) return;
+  const doc = await DB.get('documents', currentDocId);
+  if (!doc) return;
+  // .slice(0): the stored ArrayBuffer must stay intact for next time this
+  // doc is opened — pdf.js detaches whatever buffer it's handed, and a
+  // Blob constructed from a later-detached buffer would go empty.
+  const blob = new Blob([doc.blob.slice(0)], { type: 'application/pdf' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = doc.name || 'document.pdf';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+});
+
 // -------- theme --------
 
 function applyTheme(theme) {
@@ -446,19 +476,102 @@ async function populateToc() {
   await renderItems(outline, 0);
 }
 
-function openToc() {
+function openToc(tab) {
   tocPanel.classList.add('open');
   tocBackdrop.classList.add('open');
+  if (tab) setTocTab(tab);
 }
 function closeToc() {
   tocPanel.classList.remove('open');
   tocBackdrop.classList.remove('open');
 }
+function setTocTab(tab) {
+  const showBookmarks = tab === 'bookmarks';
+  tocTabContents.classList.toggle('active', !showBookmarks);
+  tocTabBookmarks.classList.toggle('active', showBookmarks);
+  tocListEl.style.display = showBookmarks ? 'none' : '';
+  bookmarksListEl.style.display = showBookmarks ? '' : 'none';
+}
 tocToggle.addEventListener('click', () => {
-  tocPanel.classList.contains('open') ? closeToc() : openToc();
+  tocPanel.classList.contains('open') ? closeToc() : openToc('contents');
 });
+tocTabContents.addEventListener('click', () => setTocTab('contents'));
+tocTabBookmarks.addEventListener('click', () => setTocTab('bookmarks'));
 tocClose.addEventListener('click', closeToc);
 tocBackdrop.addEventListener('click', closeToc);
+
+// -------- bookmarks --------
+// Separate from the table of contents (which mirrors the PDF's own
+// embedded outline, when it has one) — these are the reader's own saved
+// pages, the way a browser bookmark works: no outline required, and it
+// works even on documents (like scanned/OCR'd ones) that have no outline
+// at all.
+
+let currentBookmarks = [];
+
+async function loadBookmarks(docId) {
+  currentBookmarks = docId ? await DB.byIndex('bookmarks', 'docId', docId) : [];
+  currentBookmarks.sort((a, b) => a.page - b.page);
+  renderBookmarksList();
+  refreshBookmarkStar();
+}
+
+function renderBookmarksList() {
+  bookmarksListEl.innerHTML = '';
+  if (!currentBookmarks.length) {
+    bookmarksListEl.innerHTML = '<div class="toc-empty">No bookmarks yet — tap the ☆ in the toolbar to save a page.</div>';
+    return;
+  }
+  for (const bm of currentBookmarks) {
+    const el = document.createElement('div');
+    el.className = 'bookmark-item';
+    el.innerHTML =
+      '<span class="page-tag">p.' + bm.page + '</span>' +
+      '<span class="label"></span>' +
+      '<span class="del" title="Remove bookmark">✕</span>';
+    el.querySelector('.label').textContent = bm.label || ('Page ' + bm.page);
+    el.addEventListener('click', (e) => {
+      if (e.target.closest('.del')) return;
+      pdfView.goToPage(bm.page);
+      closeToc();
+    });
+    el.querySelector('.del').addEventListener('click', async (e) => {
+      e.stopPropagation();
+      await DB.delete('bookmarks', bm.id);
+      currentBookmarks = currentBookmarks.filter((b) => b.id !== bm.id);
+      renderBookmarksList();
+      refreshBookmarkStar();
+    });
+    bookmarksListEl.appendChild(el);
+  }
+}
+
+function currentPageNum() {
+  return parseInt(pageInput.value, 10) || 1;
+}
+
+function refreshBookmarkStar() {
+  const page = currentPageNum();
+  const bookmarked = currentDocId && currentBookmarks.some((b) => b.page === page);
+  bookmarkPageToggle.classList.toggle('active', !!bookmarked);
+}
+
+bookmarkPageToggle.addEventListener('click', async () => {
+  if (!currentDocId) return;
+  const page = currentPageNum();
+  const existing = currentBookmarks.find((b) => b.page === page);
+  if (existing) {
+    await DB.delete('bookmarks', existing.id);
+    currentBookmarks = currentBookmarks.filter((b) => b.id !== existing.id);
+  } else {
+    const bm = { id: DB.uid('bm'), docId: currentDocId, page, label: '', createdAt: Date.now() };
+    await DB.put('bookmarks', bm);
+    currentBookmarks.push(bm);
+    currentBookmarks.sort((a, b) => a.page - b.page);
+  }
+  renderBookmarksList();
+  refreshBookmarkStar();
+});
 
 // -------- zoom --------
 

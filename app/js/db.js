@@ -6,7 +6,7 @@
 // (private windows, some preview/thumbnail contexts) so the app still renders.
 
 const DB_NAME = 'marginalia';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 function openDB() {
   return new Promise((resolve, reject) => {
@@ -43,6 +43,10 @@ function openDB() {
           const s = tx.objectStore('links');
           if (!s.indexNames.contains('canvasId')) s.createIndex('canvasId', 'canvasId');
         }
+        if (!db.objectStoreNames.contains('bookmarks')) {
+          const s = db.createObjectStore('bookmarks', { keyPath: 'id' });
+          s.createIndex('docId', 'docId');
+        }
       };
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
@@ -59,7 +63,7 @@ function reqToPromise(req) {
   });
 }
 
-const ALL_STORES = ['folders', 'documents', 'canvases', 'cards', 'links'];
+const ALL_STORES = ['folders', 'documents', 'canvases', 'cards', 'links', 'bookmarks'];
 
 // In-memory fallback store — same shape of API, nothing persists across reloads.
 function makeMemoryStore() {
@@ -71,6 +75,7 @@ function makeMemoryStore() {
     canvases: ['folderId'],
     cards: ['docId', 'canvasId'],
     links: ['canvasId'],
+    bookmarks: ['docId'],
   };
   return {
     async put(store, value) { data[store].set(value.id, value); return value.id; },
