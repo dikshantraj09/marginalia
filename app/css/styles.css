@@ -733,7 +733,22 @@ button { font-family: inherit; }
 }
 .canvas-head h2 { font-family: 'Fraunces', serif; font-weight: 500; font-size: 15px; margin: 0; flex-shrink: 0; }
 .canvas-head-right { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1 1 auto; justify-content: flex-end; }
-.canvas-head .hint { font-size: 11px; color: var(--ink-faint); text-align: right; min-width: 0; }
+/* The notes pane can be dragged very narrow (the rail/reading resize
+   handles), independent of the viewport-width tiers below that hide this
+   hint outright on tablet/phone. With no white-space/overflow handling,
+   `.canvas-head-right`'s flex row had nothing else to give, so `.hint`
+   just kept shrinking and wrapping — one word per line — down to a
+   vertical column. Truncate it with an ellipsis on one line instead. */
+.canvas-head .hint {
+  font-size: 11px;
+  color: var(--ink-faint);
+  text-align: right;
+  min-width: 0;
+  flex-shrink: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .canvas-zoom-controls { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
 .canvas-zoom-controls .tb-zoom { width: 34px; }
 .canvas-collapse {

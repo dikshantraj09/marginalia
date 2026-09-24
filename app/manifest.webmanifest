@@ -2,7 +2,7 @@
   "name": "Marginalia",
   "short_name": "Marginalia",
   "description": "A PDF reader with notes that stay linked to the exact page they came from.",
-  "id": "/",
+  "id": "./",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
