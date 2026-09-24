@@ -35,6 +35,12 @@ Then open `http://localhost:8080`.
   provides the selectable text layer.
 - **IndexedDB** stores your PDFs and notes locally in the browser — nothing
   leaves your machine, no server, no account.
+- **Installable as a PWA** — `app/manifest.webmanifest` + `app/service-worker.js`
+  cache the app shell (HTML/CSS/JS/PDF.js) for offline use once installed.
+  Chrome/Edge/Android show an install icon in the top bar when the browser
+  decides the page qualifies; on iOS/Safari, use Share → Add to Home
+  Screen. There's nothing to fetch or sync once installed — it's the same
+  local-only IndexedDB storage either way.
 - Everything is plain HTML/CSS/JS — no build step, no framework, no
   dependencies to install to run it (PDF.js is only needed if you want to
   re-vendor a newer version; see `package.json`).
@@ -42,15 +48,21 @@ Then open `http://localhost:8080`.
 ## Project structure
 
 ```
-index.html          the app shell
-css/styles.css       all styles (light mode)
+index.html            the app shell
+manifest.webmanifest   PWA manifest (name, icons, standalone display)
+service-worker.js      caches the app shell for offline / installed use
+icons/                 generated PWA/favicon icons
+css/styles.css         all styles (light + dark)
 js/
-  app.js             wires everything together
-  db.js               IndexedDB wrapper (folders, documents, cards, links)
-  rail.js             folder tree — PDFs + paired Notes
-  pdfview.js           renders PDF pages, text selection, highlights
-  canvas.js            the freeform notes canvas — cards, links, drag
-vendor/pdfjs/         vendored PDF.js build (offline, no CDN dependency)
+  app.js               wires everything together
+  db.js                 IndexedDB wrapper (folders, documents, cards, links)
+  rail.js               folder tree — PDFs + paired Notes
+  pdfview.js             renders PDF pages, text selection, highlights
+  canvas.js              the freeform notes canvas — cards, links, drag
+  modal.js               in-page prompt/confirm/alert (no native dialogs)
+  vault.js               password/lock support for private PDFs
+  tour.js                first-run guided walkthrough, replayable from "?"
+vendor/pdfjs/           vendored PDF.js build (offline, no CDN dependency)
 ```
 
 ## What's not in this first pass

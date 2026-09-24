@@ -495,9 +495,14 @@ downloadPdfBtn.addEventListener('click', async () => {
 
 // -------- theme --------
 
+const themeColorMeta = document.getElementById('themeColorMeta');
 function applyTheme(theme) {
   if (theme === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
   else document.documentElement.removeAttribute('data-theme');
+  // Keeps the installed-PWA title bar / mobile status bar (and Safari's
+  // tab bar) in step with the in-app toggle, rather than a static color
+  // that only ever matched one theme.
+  if (themeColorMeta) themeColorMeta.setAttribute('content', theme === 'dark' ? '#17150F' : '#F7F4EC');
 }
 (function initTheme() {
   let saved = null;
@@ -788,6 +793,60 @@ const tour = new Tour([
 ]);
 
 tourHelpBtn.addEventListener('click', () => tour.start());
+
+// -------- PWA: install prompt + service worker --------
+// Chrome/Edge/Android hold the native install prompt back until the page
+// calls preventDefault() on `beforeinstallprompt`, which is also the only
+// signal that the browser considers this page installable right now — so
+// the button stays hidden until that fires, rather than guessing.
+// Safari/iOS never fires it at all (installing there is a manual Share >
+// Add to Home Screen), and no browser fires it once the app is already
+// running installed, so this never shows a stale "Install" button.
+const installAppBtn = document.getElementById('installAppBtn');
+let deferredInstallPrompt = null;
+
+function isRunningStandalone() {
+  return window.matchMedia('(display-mode: standalone)').matches
+    || window.navigator.standalone === true; // iOS's own flag
+}
+
+function setInstallBtnVisible(visible) {
+  installAppBtn.style.display = visible ? '' : 'none';
+  // Lets the phone topbar (see styles.css) reclaim the "☰ Folders" label's
+  // width only while a 4th icon button is actually competing for space,
+  // instead of shrinking that label in the common case where it isn't.
+  document.body.classList.toggle('pwa-install-available', visible);
+}
+
+if (!isRunningStandalone()) {
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredInstallPrompt = e;
+    setInstallBtnVisible(true);
+  });
+}
+installAppBtn.addEventListener('click', async () => {
+  if (!deferredInstallPrompt) return;
+  setInstallBtnVisible(false);
+  deferredInstallPrompt.prompt();
+  await deferredInstallPrompt.userChoice; // resolves once the person answers the native dialog
+  deferredInstallPrompt = null;
+});
+window.addEventListener('appinstalled', () => {
+  setInstallBtnVisible(false);
+  deferredInstallPrompt = null;
+});
+
+// Registering from `/app/` scopes the service worker to just this app, not
+// the marketing landing page one level up. Feature-detected and swallowed
+// on failure since this also runs inside a sandboxed artifact iframe (this
+// app's other home), where service workers can't register at all — that's
+// fine, there's nothing to install there anyway.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./service-worker.js').catch(() => { /* e.g. sandboxed iframe, unsupported browser */ });
+  });
+}
 
 // -------- boot --------
 
