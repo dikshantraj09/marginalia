@@ -2,6 +2,7 @@ import DB from './db.js';
 import Rail from './rail.js';
 import PdfView from './pdfview.js';
 import NotesCanvas from './canvas.js';
+import Tour from './tour.js';
 
 const readingEl = document.getElementById('reading');
 const pdfPagesEl = document.getElementById('pdfPages');
@@ -44,6 +45,7 @@ const importBtn = document.getElementById('importBtn');
 const emptyImportBtn = document.getElementById('emptyImportBtn');
 const fileInput = document.getElementById('fileInput');
 const themeToggle = document.getElementById('themeToggle');
+const tourHelpBtn = document.getElementById('tourHelpBtn');
 const bodyRowEl = document.getElementById('bodyRow');
 const canvasWrapEl = document.getElementById('canvasWrap');
 const canvasCollapseBtn = document.getElementById('canvasCollapseBtn');
@@ -691,8 +693,105 @@ searchCloseBtn.addEventListener('click', () => {
   searchCountEl.textContent = '';
 });
 
+// -------- welcome tour --------
+// A first-run walkthrough (replayable from the ? button) that spotlights
+// the app's main pieces. Some targets live inside panels that can be
+// collapsed/hidden (the folder rail, the notes canvas) — before/after
+// hooks on those steps temporarily reveal them for the step, then put
+// them back exactly as the person had them, rather than leaving a
+// collapsed pane forced open once the tour moves on.
+
+function tourOpenRail() {
+  if (isStacked()) {
+    const wasOpen = railEl.classList.contains('open');
+    railEl.classList.add('open');
+    return () => { if (!wasOpen) railEl.classList.remove('open'); };
+  }
+  const wasCollapsed = railEl.classList.contains('collapsed');
+  if (wasCollapsed) setRailCollapsed(false);
+  return () => { if (wasCollapsed) setRailCollapsed(true); };
+}
+
+// The notes canvas needs to stay visible across two consecutive steps (the
+// canvas itself, then the export button inside its header). Only the first
+// of the two opens it and only the second restores it, so moving forward
+// between them doesn't collapse-then-reopen the pane (that transition
+// animates, so doing both back to back would flicker). The tradeoff: if
+// the tour is closed or skipped while sitting exactly on the first of the
+// two steps, the pane is left open rather than restored — harmless (the
+// person can just collapse it again) and far less noticeable than a flicker
+// on the common forward-through-the-tour path.
+function tourHoldNotesOpen() {
+  const wasCollapsed = canvasWrapEl.classList.contains('collapsed');
+  if (wasCollapsed) setNotesCollapsed(false);
+  return () => { if (wasCollapsed) setNotesCollapsed(true); };
+}
+let tourRestoreNotes = null;
+
+// Closed over by the rail step's before/after hooks below, rather than
+// stashed on `this` — these hooks are plain arrow functions passed into a
+// steps array, not methods on Tour, so `this` inside them isn't the Tour
+// instance.
+let tourRestoreRail = null;
+
+function isStackedRailHint() {
+  return isStacked()
+    ? 'PDFs and notes canvases live here, organized into folders. Tap ☰ Folders anytime to open this panel.'
+    : 'PDFs and notes canvases live here, organized into folders you can create and rename.';
+}
+
+const tour = new Tour([
+  {
+    target: null,
+    title: 'Welcome to Marginalia',
+    body: "Marginalia is a PDF reader with notes that stay linked to the page they came from. Pull out a quote or a screenshot and it becomes a card you can click anytime to jump straight back to that exact spot. Quick tour — about 6 steps.",
+  },
+  {
+    target: 'importBtn',
+    title: 'Import a PDF',
+    body: 'Start here. Import as many PDFs as you like — each one shows up in your library on the left.',
+  },
+  {
+    target: 'rail',
+    title: 'Your library',
+    body: isStackedRailHint,
+    before: () => { tourRestoreRail = tourOpenRail(); },
+    after: () => { if (tourRestoreRail) { tourRestoreRail(); tourRestoreRail = null; } },
+  },
+  {
+    target: 'readingScroll',
+    title: 'Read & select',
+    body: 'Select text, or drag over an image, anywhere in an open PDF. Buttons appear letting you pull that excerpt onto your notes canvas.',
+  },
+  {
+    target: 'canvasWrap',
+    title: 'Your notes canvas',
+    body: 'Pulled quotes and images land here as cards. Drag the small circle on a card to link it to another, and click any card to jump straight back to the exact page it came from.',
+    before: () => { tourRestoreNotes = tourHoldNotesOpen(); },
+  },
+  {
+    target: 'canvasExportBtn',
+    title: 'Export your notes',
+    body: 'Export the whole linked note map as Markdown — handy for study notes, briefs, or summaries.',
+    after: () => { if (tourRestoreNotes) { tourRestoreNotes(); tourRestoreNotes = null; } },
+  },
+  {
+    target: 'themeToggle',
+    title: 'Light or dark',
+    body: 'Switch between a light and dark reading theme anytime.',
+  },
+  {
+    target: null,
+    title: "You're all set",
+    body: 'Import a PDF to get started. You can replay this tour anytime from the ? button up top.',
+  },
+]);
+
+tourHelpBtn.addEventListener('click', () => tour.start());
+
 // -------- boot --------
 
 (async function init() {
   await rail.load();
+  tour.maybeAutoStart();
 })();

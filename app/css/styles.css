@@ -1063,6 +1063,133 @@ button { font-family: inherit; }
 .modal-actions .modal-ok.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
 .modal-actions .modal-ok.danger:hover { filter: brightness(1.08); }
 
+/* ---------- welcome tour ---------- */
+/* Same hand-built-overlay approach as the modal above, for the same reason
+   (no native dialogs in a sandboxed artifact iframe). Two pieces sit above
+   everything else: a highlight around the current target (`.tour-spotlight`,
+   using a huge box-shadow spread to dim the rest of the page rather than a
+   separate dim layer, so the target itself needs no z-index tricks to show
+   through) or a plain full-screen dim (`.tour-dim`) for the target-less
+   welcome/closing steps — and the tooltip card itself. */
+
+.tour-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .15s ease;
+}
+.tour-overlay.open { opacity: 1; pointer-events: auto; }
+
+.tour-dim {
+  position: absolute;
+  inset: 0;
+  background: rgba(20, 17, 10, 0.55);
+  display: none;
+}
+
+.tour-spotlight {
+  position: fixed;
+  display: none;
+  border: 2px solid var(--accent);
+  border-radius: 10px;
+  box-shadow: 0 0 0 9999px rgba(20, 17, 10, 0.55);
+  transition: left .25s ease, top .25s ease, width .25s ease, height .25s ease;
+  pointer-events: auto; /* block interaction with the real app during the tour */
+}
+
+.tour-tooltip {
+  position: fixed;
+  z-index: 2001;
+  width: 320px;
+  max-width: calc(100vw - 32px);
+  background: var(--card-bg);
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  box-shadow: 0 20px 48px -16px var(--card-shadow);
+  padding: 18px 20px 16px;
+  transition: top .2s ease, left .2s ease;
+}
+.tour-tooltip.center {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+/* On phone the spotlighted target (the rail drawer, the stacked notes
+   pane…) can fill nearly the whole screen, leaving nowhere reliable to
+   anchor a floating tooltip next to it — so instead of placement math
+   against a target that may BE the viewport, the tooltip becomes a fixed
+   bottom sheet, a pattern that works regardless of what's highlighted
+   above it. */
+.tour-tooltip.sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  top: auto;
+  width: 100%;
+  max-width: 100%;
+  border-radius: 16px 16px 0 0;
+  border-bottom: none;
+  padding: 16px 18px calc(16px + env(safe-area-inset-bottom, 0px));
+  box-shadow: 0 -8px 28px -12px var(--card-shadow);
+}
+
+.tour-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  border: none;
+  background: none;
+  color: var(--ink-faint);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 4px;
+  line-height: 1;
+}
+.tour-close:hover { color: var(--ink); }
+
+.tour-eyebrow {
+  font-size: 11px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-weight: 600;
+  min-height: 14px;
+}
+.tour-title { margin: 2px 0 6px; font-size: 16px; color: var(--ink); }
+.tour-body { margin: 0 0 14px; font-size: 13.5px; line-height: 1.55; color: var(--ink-soft); }
+
+.tour-dots { display: flex; gap: 6px; margin-bottom: 14px; }
+.tour-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--rule); }
+.tour-dot.active { background: var(--accent); }
+
+.tour-actions { display: flex; align-items: center; gap: 8px; }
+.tour-actions button {
+  font: inherit;
+  font-size: 13px;
+  padding: 8px 14px;
+  border-radius: 7px;
+  cursor: pointer;
+  border: 1px solid var(--rule);
+  background: none;
+  color: var(--ink-soft);
+}
+.tour-actions .tour-back { margin-right: auto; }
+.tour-actions .tour-back:hover { color: var(--ink); }
+.tour-actions .tour-skip {
+  border-color: transparent;
+  color: var(--ink-faint);
+}
+.tour-actions .tour-skip:hover { color: var(--ink-soft); }
+.tour-actions .tour-next {
+  background: var(--ink);
+  color: var(--paper);
+  border-color: var(--ink);
+}
+.tour-actions .tour-next:hover { background: var(--accent); border-color: var(--accent); color: var(--ink); }
+
 /* ---------- responsive ---------- */
 
 /* "Tablet" range (641–900px): still the full side-by-side, resizable
@@ -1168,4 +1295,22 @@ button { font-family: inherit; }
   .tb-btn { width: 34px; height: 34px; font-size: 16px; }
   .tb-btn.small { width: 28px; height: 28px; font-size: 14px; }
   .tb-search { height: 34px; }
+
+  /* The topbar (☰ Folders, wordmark, theme toggle, ? help, Import PDF) was
+     already right at the edge of fitting on one line at narrow phone
+     widths — adding the ? help button pushed it over, so both the
+     "Folders" label and the "Import PDF" label started wrapping onto a
+     second line inside their own buttons instead of staying on one row.
+     Tighten the topbar's own spacing (not any individual control's
+     touch-target size) to reclaim enough width to fit five items on one
+     line down to ~360px-wide phones. */
+  .topbar { gap: 6px; padding: 10px 8px; }
+  .rail-toggle, .import-btn { white-space: nowrap; }
+  .rail-toggle { padding: 6px 8px; }
+  .import-btn { padding: 7px 10px; font-size: 11.5px; }
+  /* The wordmark is purely decorative branding here (the doc title next to
+     it is already hidden at this width) — a couple of points smaller buys
+     back real width for the functional controls on either side of it,
+     which matters down around 360px-wide phones. */
+  .wordmark { font-size: 16px; }
 }
