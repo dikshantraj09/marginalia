@@ -62,8 +62,13 @@ pdfView.onPageChange = (pageNum) => {
   if (document.activeElement !== pageInput) pageInput.value = pageNum;
 };
 pdfView.onSearchResults = (active, total) => {
+  if (total === null) { searchCountEl.textContent = 'Searching…'; return; } // large-doc scan in progress
   searchCountEl.textContent = total ? active + ' / ' + total : (searchInput.value.trim() ? '0 / 0' : '');
 };
+// Keeps the toolbar's zoom readout in sync with pinch-zoom too, not just
+// the +/- buttons (which already set this same text directly, redundantly
+// but harmlessly, on click).
+pdfView.onZoomChange = (z) => { zoomLevelEl.textContent = Math.round(z * 100) + '%'; };
 
 const canvas = new NotesCanvas(canvasEl, canvasInnerEl, linkGroupEl, canvasEmptyEl, {
   onCardAdded: (card) => DB.put('cards', card),
@@ -234,6 +239,25 @@ fileInput.addEventListener('change', () => {
 });
 
 railToggle.addEventListener('click', () => railEl.classList.toggle('open'));
+
+// -------- folder rail collapse (desktop "just read" mode, mirrors the
+// notes-panel collapse below) --------
+
+const railCollapseBtn = document.getElementById('railCollapseBtn');
+const railExpandTab = document.getElementById('railExpandTab');
+
+function setRailCollapsed(collapsed) {
+  railEl.classList.toggle('collapsed', collapsed);
+  bodyRowEl.classList.toggle('rail-collapsed', collapsed);
+  try { localStorage.setItem('marginalia-rail-collapsed', collapsed ? '1' : '0'); } catch (err) { /* ignore */ }
+}
+(function initRailCollapsed() {
+  let saved = null;
+  try { saved = localStorage.getItem('marginalia-rail-collapsed'); } catch (err) { /* ignore */ }
+  if (saved === '1') setRailCollapsed(true);
+})();
+railCollapseBtn.addEventListener('click', () => setRailCollapsed(true));
+railExpandTab.addEventListener('click', () => setRailCollapsed(false));
 
 // -------- notes panel collapse (a "just read" mode) --------
 

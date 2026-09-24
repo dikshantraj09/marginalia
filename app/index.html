@@ -21,7 +21,17 @@
     </div>
 
     <div class="body-row" id="bodyRow">
+      <button class="rail-expand-tab" id="railExpandTab" title="Show folders">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>
+        Folders
+      </button>
       <nav class="rail" id="rail">
+        <div class="rail-head">
+          <span>Library</span>
+          <button class="rail-collapse" id="railCollapseBtn" title="Hide folders — just read">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 6l-6 6 6 6"/></svg>
+          </button>
+        </div>
         <div class="rail-group">
           <h3>PDFs <span class="add" id="addPdfFolder" title="New folder">＋</span></h3>
           <div class="rail-tree" id="pdfGroup"></div>

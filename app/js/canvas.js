@@ -153,12 +153,52 @@ export default class NotesCanvas {
   }
 
   // Drag on empty canvas background (not a card, not a link thread) pans
-  // the view. Mirrors the PDF reading pane's own marquee gesture handling,
-  // including treating a browser-issued pointercancel the same as a normal
-  // pointerup so an in-progress pan still lands wherever it had gotten to
-  // rather than silently doing nothing.
+  // the view — one finger (or the mouse) pans, two fingers pinch-zoom
+  // (with the pinch's own two-finger drag panning at the same time, same
+  // as any native map/photo app). Mirrors the PDF reading pane's own
+  // gesture handling in pdfview.js, including treating a browser-issued
+  // pointercancel the same as a normal pointerup so an in-progress
+  // gesture still lands wherever it had gotten to rather than silently
+  // doing nothing.
   _wirePanning() {
-    let dragging = false, startX, startY, startPanX, startPanY;
+    // Every currently-down pointer that belongs to this gesture (started on
+    // empty canvas background, not a card/menu/thread) — pointerId -> last
+    // known {x, y}. Size 1 is a plain pan; size 2 is a pinch. A 3rd+
+    // simultaneous pointer is tracked (so the count when fingers lift is
+    // still right) but otherwise ignored — re-pairing mid-gesture isn't
+    // worth the complexity for a three-finger touch.
+    const pointers = new Map();
+    let mode = null; // 'pan' | 'pinch' | null
+    let startX, startY, startPanX, startPanY; // 'pan' gesture baseline
+    let pinchIds = null; // the two pointerIds the active pinch is measured from
+    let pinchStartDist = 0, pinchStartZoom = 1, pinchStartMid = null, pinchStartPan = null;
+    let pinchStartOrigin = null; // canvasEl's own screen rect, captured once per pinch (see beginPinch)
+
+    const twoPoints = () => pinchIds.map((id) => pointers.get(id));
+    const midpoint = (pts) => ({ x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 });
+    const distance = (pts) => Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+
+    const beginPan = (x, y) => {
+      mode = 'pan';
+      startX = x; startY = y;
+      startPanX = this.pan.x; startPanY = this.pan.y;
+      this.canvasEl.classList.add('panning');
+    };
+    const beginPinch = () => {
+      mode = 'pinch';
+      this.canvasEl.classList.remove('panning');
+      pinchIds = [...pointers.keys()].slice(0, 2);
+      const pts = twoPoints();
+      pinchStartDist = distance(pts) || 1;
+      pinchStartZoom = this.zoom;
+      pinchStartMid = midpoint(pts);
+      pinchStartPan = { x: this.pan.x, y: this.pan.y };
+      // The canvas element doesn't move during the gesture, so its screen
+      // rect is a valid, constant reference for converting the pinch's
+      // screen-space coordinates into the canvas's own local space — see
+      // the anchoring math in onMove.
+      pinchStartOrigin = this.canvasEl.getBoundingClientRect();
+    };
 
     const onDown = (e) => {
       if (e.button !== undefined && e.button !== 0) return;
@@ -169,29 +209,64 @@ export default class NotesCanvas {
       // on the canvas, which retargets the resulting `click` event to the
       // canvas div and the thread's click handler would never fire.
       if (e.target.closest && e.target.closest('.hit, .link-label')) return;
-      dragging = true;
-      startX = e.clientX; startY = e.clientY;
-      startPanX = this.pan.x; startPanY = this.pan.y;
-      this.canvasEl.classList.add('panning');
       try { this.canvasEl.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       this._closeLinkMenu();
+      if (pointers.size === 1) beginPan(e.clientX, e.clientY);
+      else if (pointers.size === 2) beginPinch();
     };
     const onMove = (e) => {
-      if (!dragging) return;
-      // Screen-px deltas, converted to the pan transform's local (pre-zoom)
-      // px so the content tracks the cursor 1:1 at any zoom level.
-      this._setPan(
-        startPanX + (e.clientX - startX) / this.zoom,
-        startPanY + (e.clientY - startY) / this.zoom
-      );
+      if (!pointers.has(e.pointerId)) return;
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+      if (mode === 'pinch') {
+        e.preventDefault();
+        const pts = twoPoints();
+        const dist = distance(pts) || 1;
+        const mid = midpoint(pts);
+        // Anchor the pinch to the world point that was under the fingers
+        // when the gesture started, so the content under them stays under
+        // them as they spread/pinch — the same math as the PDF pane's own
+        // pinch-zoom (see pdfview.js), adapted to this canvas's
+        // translate-then-zoom layering (see the comment on setZoom above):
+        // a local (pre-zoom) point L maps to screen as origin + zoom*L, and
+        // a card's local position is pan + card.xy, so solving for the pan
+        // that keeps the same local point under the (possibly also
+        // dragged) new midpoint gives pan' = (mid-origin)/zoom' - worldXY.
+        const origin = pinchStartOrigin;
+        const worldX = (pinchStartMid.x - origin.x) / pinchStartZoom - pinchStartPan.x;
+        const worldY = (pinchStartMid.y - origin.y) / pinchStartZoom - pinchStartPan.y;
+        const newZoom = this.setZoom(pinchStartZoom * (dist / pinchStartDist));
+        this._setPan(
+          (mid.x - origin.x) / newZoom - worldX,
+          (mid.y - origin.y) / newZoom - worldY
+        );
+      } else if (mode === 'pan') {
+        // Screen-px deltas, converted to the pan transform's local (pre-zoom)
+        // px so the content tracks the cursor 1:1 at any zoom level.
+        this._setPan(
+          startPanX + (e.clientX - startX) / this.zoom,
+          startPanY + (e.clientY - startY) / this.zoom
+        );
+      }
     };
-    const onUp = () => {
-      dragging = false;
+    const onUp = (e) => {
+      pointers.delete(e.pointerId);
+      if (mode === 'pinch' && pointers.size < 2) {
+        // Lifting one finger of a pinch ends the zoom gesture rather than
+        // snapping into a one-finger pan from that finger's (unrelated)
+        // starting point — the remaining finger just needs a fresh
+        // pointerdown to do anything again.
+        mode = null;
+        pinchIds = null;
+      } else if (mode === 'pan' && pointers.size === 0) {
+        mode = null;
+      }
       this.canvasEl.classList.remove('panning');
     };
 
     this.canvasEl.addEventListener('pointerdown', onDown);
-    this.canvasEl.addEventListener('pointermove', onMove);
+    this.canvasEl.addEventListener('pointermove', onMove, { passive: false });
     window.addEventListener('pointerup', onUp);
     window.addEventListener('pointercancel', onUp);
   }

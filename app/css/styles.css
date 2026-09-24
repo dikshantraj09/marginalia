@@ -136,7 +136,66 @@ button { font-family: inherit; }
   border-right: 1px solid var(--rule);
   padding: 16px 12px;
   overflow-y: auto;
+  transition: width .16s ease, padding .16s ease, border-color .16s ease;
 }
+.rail.collapsed {
+  width: 0;
+  padding-left: 0;
+  padding-right: 0;
+  border-right-color: transparent;
+  overflow: hidden;
+}
+.rail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 2px 12px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--ink-faint);
+  font-weight: 600;
+}
+.rail-collapse {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--rule);
+  background: none;
+  border-radius: 6px;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.rail-collapse:hover { color: var(--ink); border-color: var(--ink-faint); }
+
+/* Slim tab that reopens the rail once it's collapsed — mirrors
+   .canvas-expand-tab on the opposite side of the layout. */
+.rail-expand-tab {
+  display: none;
+  position: absolute;
+  top: 50%; left: 0;
+  transform: translateY(-50%);
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-left: none;
+  border-radius: 0 8px 8px 0;
+  padding: 14px 7px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink-soft);
+  cursor: pointer;
+  box-shadow: 4px 0 12px -8px var(--card-shadow);
+  z-index: 5;
+}
+.rail-expand-tab svg { flex-shrink: 0; }
+.rail-expand-tab:hover { color: var(--ink); }
+.body-row.rail-collapsed .rail-expand-tab { display: flex; }
 .rail h3 {
   font-size: 11px;
   text-transform: uppercase;
@@ -228,6 +287,11 @@ button { font-family: inherit; }
   overflow-x: auto; /* the page has a fixed reading width — scroll to it rather than letting it hide under the Notes pane on a narrower window */
   padding: 30px 26px 80px;
   position: relative;
+  /* Same reasoning as .pdf-page-wrap's own touch-action (see there): keeps
+     native touch gestures from fighting pdfview.js's pointer-driven
+     pinch-zoom (_beginPinch/_updatePinch) if a second finger happens to
+     land in this pane's padding rather than on the page itself. */
+  touch-action: pan-y;
 }
 
 /* ---------- pdf toolbar ---------- */
@@ -400,6 +464,17 @@ button { font-family: inherit; }
   background: var(--page-canvas-bg);
   border: 1px solid var(--rule);
   box-shadow: 0 10px 24px -12px var(--page-shadow);
+  /* Without this, touch/pen drags over the page default to touch-action:
+     auto, so the browser is free to claim the gesture for native panning
+     the instant it looks scroll-like — the marquee-selection code in
+     pdfview.js never even sees a full pointer stream, which is why
+     dragging to select silently did nothing on a tablet or with a pencil.
+     pan-y (not none) keeps that native vertical scroll working, but only
+     for gestures the browser itself reads as mostly-vertical — the same
+     split pdfview.js's own SCROLL_INTENT check makes — so anything with a
+     real horizontal component is left for our pointer handlers, on touch,
+     pen, and mouse alike. */
+  touch-action: pan-y;
 }
 .pdf-page-wrap canvas { display: block; width: 100%; height: auto; }
 .text-layer {
@@ -421,6 +496,11 @@ button { font-family: inherit; }
      not native Range, everywhere in this layer — see pdfview.js.
      */
   user-select: none;
+  /* iOS/iPadOS Safari shows its own text-selection magnifier/callout on a
+     long-press even with user-select:none on the span text itself (color:
+     transparent doesn't stop it either) — it would pop up mid-drag and
+     swallow the gesture our own marquee is tracking. */
+  -webkit-touch-callout: none;
 }
 .text-layer span {
   color: transparent;
@@ -699,6 +779,15 @@ button { font-family: inherit; }
   font-size: 12.5px;
   line-height: 1.5;
   color: var(--ink);
+  /* A marquee drag over a large, multi-row/multi-column region (a whole
+     title block plus a table, say) can pull in a very long excerpt. Without
+     a cap the card just kept growing taller to fit it — often past the
+     visible canvas area, reading as the card "overflowing". Cap the quote
+     itself and let it scroll internally instead, so the card's overall
+     size — and the always-visible note/meta footer below it — stays
+     predictable regardless of how much text got pulled in. */
+  max-height: 220px;
+  overflow-y: auto;
 }
 .card-image {
   display: block;
@@ -837,6 +926,9 @@ button { font-family: inherit; }
     box-shadow: 0 0 24px var(--card-shadow);
   }
   .rail.open { transform: translateX(0); }
+  .rail.collapsed { width: 232px; } /* the always-on-top toggle button above already handles mobile show/hide */
+  .rail-head { display: none; } /* redundant with the ☰ Folders toggle in the topbar at this width */
+  .rail-expand-tab { display: none !important; }
   .body-row { flex-direction: column; }
   .reading { border-right: none; border-bottom: 1px solid var(--rule); flex: 1 1 auto; max-height: 50vh; }
   .canvas-wrap { flex: 1 1 auto; }

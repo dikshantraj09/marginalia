@@ -71,3 +71,10 @@ export function showPrompt(message, defaultValue) {
 export function showConfirm(message, okLabel) {
   return openModal({ message, showInput: false, okLabel: okLabel || 'Delete', danger: true });
 }
+
+// A plain acknowledgement dialog — same reasoning as the rest of this file
+// (window.alert() is just as unreliable in a sandboxed artifact iframe as
+// prompt()/confirm() are). Resolves once dismissed; nothing to read back.
+export function showAlert(message, okLabel) {
+  return openModal({ message, showInput: false, okLabel: okLabel || 'OK', danger: false });
+}
