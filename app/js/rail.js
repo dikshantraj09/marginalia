@@ -92,7 +92,7 @@ export default class Rail {
       const { usage = 0, quota = 0 } = await navigator.storage.estimate();
       this.storageEl.style.display = '';
       this.storageTextEl.textContent = quota
-        ? formatBytes(usage) + ' used locally'
+        ? formatBytes(usage) + ' / ' + formatBytes(quota) + ' used'
         : formatBytes(usage) + ' stored locally';
       const pct = quota ? Math.min(100, (usage / quota) * 100) : 0;
       this.storageFillEl.style.width = pct + '%';
