@@ -5,10 +5,22 @@
 // no network at all. Bump CACHE_NAME on any shell change (a new file, or a
 // change to one already listed) so the activate step evicts the old cache
 // instead of an installed app being stuck on stale JS.
-const CACHE_NAME = 'marginalia-shell-v2';
+//
+// v3 bump: the static host redirects a request for './index.html' to './'
+// (canonicalizing away the explicit filename). cache.addAll()/fetch() both
+// follow that redirect silently and hand back a Response with
+// `redirected: true` — and Chrome refuses to let a service worker satisfy
+// a page-navigation FetchEvent with such a response at all: it fails the
+// navigation outright with a network error (the "This site can't be
+// reached" a person saw here, on every load after the very first one,
+// once this worker took control and started serving that poisoned cache
+// entry). cleanResponse() below strips the redirect before anything is
+// ever stored, for both precaching and runtime revalidation, and the v3
+// cache name makes sure everyone still holding the poisoned v2 entry gets
+// it evicted on the next visit rather than staying stuck on it forever.
+const CACHE_NAME = 'marginalia-shell-v3';
 const SHELL_FILES = [
   './',
-  './index.html',
   './manifest.webmanifest',
   './css/styles.css',
   './js/app.js',
@@ -25,10 +37,27 @@ const SHELL_FILES = [
   './icons/icon-512.png',
 ];
 
+// See the CACHE_NAME comment above: never let a redirected response (one
+// whose `.redirected` is true, or whose `.url` doesn't match the key it's
+// being stored under) reach the cache. Rebuilding it as a plain synthetic
+// Response drops that flag entirely, which is exactly what makes it safe
+// to hand back to respondWith() for a navigation afterwards.
+async function cleanResponse(response) {
+  if (!response.redirected) return response;
+  const body = await response.clone().arrayBuffer();
+  return new Response(body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  });
+}
+
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(SHELL_FILES))
+      .then((cache) => Promise.all(SHELL_FILES.map((file) =>
+        fetch(file).then(cleanResponse).then((res) => cache.put(file, res))
+      )))
       .then(() => self.skipWaiting())
   );
 });
@@ -66,11 +95,15 @@ self.addEventListener('fetch', (event) => {
 
   event.respondWith(
     caches.match(event.request).then((cached) => {
+      // Cleaned once here — before either caching it or handing it back to
+      // respondWith() — so a live cache-miss fetch (e.g. someone landing
+      // directly on a stale '/app/index.html' link) can't hit the same
+      // redirected-response-on-a-navigation restriction as the cache path.
       const network = fetch(event.request)
+        .then((response) => (response && response.ok ? cleanResponse(response) : response))
         .then((response) => {
           if (response && response.ok) {
-            const copy = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, response.clone()));
           }
           return response;
         })
@@ -84,7 +117,7 @@ self.addEventListener('fetch', (event) => {
         // shell itself is the best fallback we have — it's precached on
         // install, so this only comes up if that install never completed.
         if (event.request.mode === 'navigate') {
-          return caches.match('./index.html').then((shell) => shell || offlineResponse());
+          return caches.match('./').then((shell) => shell || offlineResponse());
         }
         return offlineResponse();
       });
