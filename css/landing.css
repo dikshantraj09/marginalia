@@ -1,6 +1,16 @@
 @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,680;1,9..144,500&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
 
+/* Landing page always renders this one warm-paper palette, matching the
+   brand across the promo video and marketing assets -- it does NOT follow
+   system/browser dark mode. The .statement section further down is the
+   page's single deliberately-inverted (dark) block; it and the nav's
+   "over a dark section" state both assume --ink is always the dark color
+   and --paper always the light one. Letting :root swap those meanings
+   under `prefers-color-scheme: dark` un-inverts .statement (it goes light
+   while the rest of the page goes dark) and muddies the nav -- so this
+   page pins color-scheme to light instead of remapping the tokens. */
 :root {
+  color-scheme: light;
   --paper: #F7F4EC;
   --canvas: #EDEAE0;
   --canvas-dot: #DCD7C8;
@@ -15,22 +25,6 @@
   --radius: 14px;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-inout: cubic-bezier(0.65, 0, 0.35, 1);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --paper: #17150F;
-    --canvas: #100F0B;
-    --canvas-dot: #26241C;
-    --ink: #EDE7D8;
-    --ink-soft: #A69C87;
-    --ink-faint: #6E6553;
-    --rule: #322E22;
-    --accent: #D9A44C;
-    --accent-2: #5FA69C;
-    --card-bg: #1F1D15;
-    --card-shadow: rgba(0, 0, 0, 0.45);
-  }
 }
 
 * { box-sizing: border-box; }
