@@ -1,5 +1,10 @@
 # Marginalia
 
+**[Try it →](https://marginalia.dikshantraj09.workers.dev/)** · free, no
+account, nothing uploaded · MIT licensed
+
+![Marginalia: a PDF open beside a notes canvas with linked excerpt cards](images/hero.webp)
+
 A PDF reader with a freeform notes canvas next to it. Pull excerpts out of
 any PDF, write your own notes on them, connect related excerpts with a
 thread, and click any card to jump straight back to the exact page it came
@@ -15,6 +20,15 @@ folder tree on the left. A canvas isn't tied to one PDF — the same canvas
 can hold excerpts pulled from several different PDFs, each card labeled
 with (and linked back to) the document it came from. Dark mode is in the
 top bar.
+
+### AI-ready export
+
+The export button on a notes canvas downloads one Markdown file. It holds
+every card's excerpt, the page it came from, your note on it, and each link
+in both directions, plus a short header that explains the format. Give that
+file to ChatGPT, Claude or any other assistant together with the source PDF
+and ask it to summarize your argument, find where your notes disagree, or
+quiz you.
 
 ## Running it
 

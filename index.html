@@ -8,6 +8,12 @@
 <link rel="icon" type="image/png" sizes="32x32" href="app/icons/favicon-32.png">
 <link rel="icon" type="image/png" sizes="64x64" href="app/icons/favicon-64.png">
 <link rel="apple-touch-icon" href="app/icons/apple-touch-icon.png">
+<meta property="og:type" content="website" />
+<meta property="og:title" content="marginalia — every excerpt remembers its page" />
+<meta property="og:description" content="A free, open-source PDF reader with a notes canvas. Pull passages, link ideas, jump back to the exact page, and export your notes as AI-ready Markdown. No account, nothing uploaded." />
+<meta property="og:image" content="https://marginalia.dikshantraj09.workers.dev/images/og.jpg" />
+<meta property="og:url" content="https://marginalia.dikshantraj09.workers.dev/" />
+<meta name="twitter:card" content="summary_large_image" />
 <link rel="stylesheet" href="css/landing.css" />
 </head>
 <body>
@@ -118,10 +124,30 @@
     </div>
   </section>
 
+  <section class="section ai-ready" id="ai-ready">
+    <div class="ai-inner reveal-up">
+      <p class="eyebrow">Export</p>
+      <h2>Your notes, ready for your AI.</h2>
+      <p class="ai-sub">Export a canvas as one Markdown file: every excerpt, the page it came from, your own notes, and how each one connects. Give it to ChatGPT or Claude along with the PDF, and it reads your thinking as well as the source.</p>
+      <div class="ai-flow" aria-label="link-map.md plus source.pdf, given to your AI">
+        <span class="ai-file ai-file-md">link-map.md</span>
+        <span class="ai-op" aria-hidden="true">+</span>
+        <span class="ai-file">source.pdf</span>
+        <span class="ai-end"><span class="ai-op" aria-hidden="true">→</span><span class="ai-file">your AI</span></span>
+      </div>
+      <ul class="ai-prompts">
+        <li>“Summarize my argument in five bullets.”</li>
+        <li>“Where do my notes contradict each other?”</li>
+        <li>“Quiz me on this chapter.”</li>
+      </ul>
+    </div>
+  </section>
+
   <section class="section closing">
     <div class="closing-inner reveal-up">
       <h2>Start pulling excerpts.</h2>
       <a class="btn-primary" href="app/">Open the app</a>
+      <p class="closing-note">Free and open source (MIT). <a href="https://github.com/dikshantraj09/marginalia">View the code on GitHub</a>.</p>
     </div>
   </section>
 
