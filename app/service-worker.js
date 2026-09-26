@@ -5,7 +5,7 @@
 // no network at all. Bump CACHE_NAME on any shell change (a new file, or a
 // change to one already listed) so the activate step evicts the old cache
 // instead of an installed app being stuck on stale JS.
-const CACHE_NAME = 'marginalia-shell-v2';
+const CACHE_NAME = 'marginalia-shell-v3';
 const SHELL_FILES = [
   './',
   './index.html',

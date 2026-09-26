@@ -769,44 +769,68 @@ export default class NotesCanvas {
 
   // ---------- export ----------
 
-  // Walks the link graph into a plain-text outline: each card that has at
-  // least one outgoing link, followed by its links (labeled where set) to
-  // their target excerpts, then a trailing section for any cards with no
-  // links at all. Meant to be saved/copied as a quick argument summary.
-  getLinkMapMarkdown() {
-    const cardLabel = (c) => {
-      const src = (c.docName ? c.docName + ', ' : '') + 'p.' + c.page;
-      const text = c.excerpt ? c.excerpt.replace(/\s+/g, ' ').trim() : (c.image ? '[image excerpt]' : '');
-      const snippet = text.length > 140 ? text.slice(0, 140) + '…' : text;
-      return '"' + snippet + '" (' + src + ')';
-    };
+  // Writes the canvas out as a self-describing Markdown document, meant to
+  // be read by a person or handed to an AI alongside the source PDF. Every
+  // card appears exactly once (numbered C1, C2, …) with its full excerpt,
+  // source page and the reader's own note, plus its links in BOTH
+  // directions — so a card that is only ever linked *to* still shows its
+  // note. A flat "Connections" list at the end restates the whole graph.
+  getLinkMapMarkdown(title) {
+    const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
+    const ids = new Map(this.cards.map((c, i) => [c.id, 'C' + (i + 1)]));
+    const source = (c) => (c.docName ? c.docName + ', ' : '') + 'p.' + c.page;
+    const verbOf = (l) => (l.type ? l.type.toLowerCase() : 'links to');
+    const links = this.links.filter((l) => ids.has(l.a) && ids.has(l.b));
 
-    const linked = new Set();
-    const lines = ['# Link map', ''];
-    let any = false;
+    const lines = ['# ' + (clean(title) || 'Link map'), ''];
+    if (!this.cards.length) {
+      lines.push('_No cards on this canvas yet._');
+      return lines.join('\n');
+    }
+
+    const docs = [...new Set(this.cards.map((c) => c.docName).filter(Boolean))];
+    lines.push(
+      '_Exported from Marginalia. Each card is an excerpt taken from a PDF' +
+        (docs.length ? ' (' + docs.join(', ') + ')' : '') +
+        ', with the page it came from and the reader\'s own note on it. ' +
+        'Links record how the reader thinks the excerpts relate._',
+      '',
+      '**' + this.cards.length + ' card' + (this.cards.length === 1 ? '' : 's') + ', ' +
+        links.length + ' link' + (links.length === 1 ? '' : 's') + '.**',
+      '',
+      '## Cards',
+      ''
+    );
+
     this.cards.forEach((c) => {
-      const outgoing = this.links.filter((l) => l.a === c.id);
-      if (!outgoing.length) return;
-      any = true;
-      linked.add(c.id);
-      lines.push('- ' + cardLabel(c));
-      outgoing.forEach((l) => {
-        const target = this.cards.find((x) => x.id === l.b);
-        if (!target) return;
-        linked.add(target.id);
-        const verb = l.type ? l.type.toLowerCase() : 'links to';
-        lines.push('  - ' + verb + ' → ' + cardLabel(target));
-      });
+      const id = ids.get(c.id);
+      lines.push('### ' + id + ' · ' + source(c), '');
+      const excerpt = clean(c.excerpt);
+      lines.push(excerpt ? '> ' + excerpt : '> _[image excerpt, no extractable text]_', '');
+      const note = (c.note || '').trim();
+      if (note) {
+        lines.push('**Note:** ' + note.split(/\n+/).map((s) => s.trim()).filter(Boolean).join(' / '), '');
+      }
+      const out = links.filter((l) => l.a === c.id).map((l) => '- ' + verbOf(l) + ' → ' + ids.get(l.b));
+      const inc = links.filter((l) => l.b === c.id).map((l) => '- ' + ids.get(l.a) + ' ' + verbOf(l) + ' → this');
+      if (out.length || inc.length) lines.push('**Links:**', ...out, ...inc, '');
+      else lines.push('_Not linked to other cards._', '');
     });
 
-    const unlinked = this.cards.filter((c) => !linked.has(c.id));
-    if (unlinked.length) {
-      if (any) lines.push('');
-      lines.push('## Unlinked cards', '');
-      unlinked.forEach((c) => lines.push('- ' + cardLabel(c)));
+    if (links.length) {
+      lines.push('## Connections', '');
+      links.forEach((l) => {
+        const a = this.cards.find((x) => x.id === l.a);
+        const b = this.cards.find((x) => x.id === l.b);
+        const snip = (c) => {
+          const t = clean(c.excerpt) || '[image excerpt]';
+          return '"' + (t.length > 80 ? t.slice(0, 80) + '…' : t) + '"';
+        };
+        lines.push('- ' + ids.get(l.a) + ' ' + snip(a) + ' **' + verbOf(l) + '** ' + ids.get(l.b) + ' ' + snip(b));
+      });
+      lines.push('');
     }
-    if (!any && !unlinked.length) lines.push('_No cards on this canvas yet._');
 
-    return lines.join('\n');
+    return lines.join('\n').trimEnd() + '\n';
   }
 }

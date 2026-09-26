@@ -67,7 +67,7 @@ vendor/pdfjs/           vendored PDF.js build (offline, no CDN dependency)
 
 ## What's not in this first pass
 
-Cloud sync across devices, PDF markup/drawing tools, export, and search.
+Cloud sync across devices and PDF markup/drawing tools.
 
 ## License
 

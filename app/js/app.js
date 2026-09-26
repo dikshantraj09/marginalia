@@ -460,7 +460,7 @@ canvasExpandTab.addEventListener('click', () => setNotesCollapsed(false));
 
 canvasExportBtn.addEventListener('click', () => {
   if (!currentCanvasId) return;
-  const md = canvas.getLinkMapMarkdown();
+  const md = canvas.getLinkMapMarkdown(canvasTitleEl.textContent);
   const blob = new Blob([md], { type: 'text/markdown' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -777,7 +777,7 @@ const tour = new Tour([
   {
     target: 'canvasExportBtn',
     title: 'Export your notes',
-    body: 'Export the whole linked note map as Markdown — handy for study notes, briefs, or summaries.',
+    body: 'Export the whole linked note map — excerpts, pages, your notes and links — as Markdown. Handy for study notes, or hand it to an AI along with the PDF.',
     after: () => { if (tourRestoreNotes) { tourRestoreNotes(); tourRestoreNotes = null; } },
   },
   {
