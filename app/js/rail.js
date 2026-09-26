@@ -8,6 +8,15 @@ import { showPrompt, showConfirm } from './modal.js';
 
 const DRAG_TYPE = { pdf: 'text/pdf-doc-id', note: 'text/note-canvas-id' };
 
+function formatBytes(n) {
+  if (n < 1024) return n + ' B';
+  const units = ['KB', 'MB', 'GB', 'TB'];
+  let v = n / 1024;
+  let i = 0;
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+  return (v >= 100 ? Math.round(v) : Math.round(v * 10) / 10) + ' ' + units[i];
+}
+
 export default class Rail {
   constructor(railEl, callbacks) {
     this.railEl = railEl;
@@ -26,6 +35,11 @@ export default class Rail {
     railEl.querySelector('#addPdfFolder').addEventListener('click', () => this._createFolder(null, 'pdf'));
     railEl.querySelector('#addNotesFolder').addEventListener('click', () => this._createFolder(null, 'note'));
     railEl.querySelector('#addCanvas').addEventListener('click', () => this._createCanvas(null));
+
+    this.storageEl = railEl.querySelector('#railStorage');
+    this.storageTextEl = railEl.querySelector('#railStorageText');
+    this.storageFillEl = railEl.querySelector('#railStorageFill');
+    this._storagePending = false;
   }
 
   async load() {
@@ -56,6 +70,41 @@ export default class Rail {
     this.canvasRowEls.clear();
     this._renderLevel(null, this.pdfGroupEl, 'pdf');
     this._renderLevel(null, this.notesGroupEl, 'note');
+    this._refreshStorage();
+  }
+
+  // Reflects how much of the browser's own storage this library is using
+  // right now — the checkable version of "nothing is uploaded". Runs after
+  // every add/import/delete via render(), so it stays current without a
+  // dedicated refresh call anywhere else. Coalesces overlapping calls
+  // (several DB writes can each trigger a render in quick succession)
+  // rather than firing navigator.storage.estimate() once per write.
+  async _refreshStorage() {
+    if (!this.storageEl) return;
+    if (!navigator.storage || typeof navigator.storage.estimate !== 'function') {
+      this.storageEl.style.display = 'none'; // unsupported (older Safari, some sandboxed contexts) — say nothing rather than guess
+      return;
+    }
+    if (this._storagePending) { this._storageDirty = true; return; }
+    this._storagePending = true;
+    this._storageDirty = false;
+    try {
+      const { usage = 0, quota = 0 } = await navigator.storage.estimate();
+      this.storageEl.style.display = '';
+      this.storageTextEl.textContent = quota
+        ? formatBytes(usage) + ' / ' + formatBytes(quota) + ' used'
+        : formatBytes(usage) + ' stored locally';
+      const pct = quota ? Math.min(100, (usage / quota) * 100) : 0;
+      this.storageFillEl.style.width = pct + '%';
+      this.storageEl.title = quota
+        ? formatBytes(usage) + ' used of about ' + formatBytes(quota) + ' available in this browser — nothing is uploaded.'
+        : formatBytes(usage) + ' stored in this browser — nothing is uploaded.';
+    } catch (err) {
+      this.storageEl.style.display = 'none';
+    } finally {
+      this._storagePending = false;
+      if (this._storageDirty) this._refreshStorage();
+    }
   }
 
   _childFolders(parentId, kind) {

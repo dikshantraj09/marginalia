@@ -5,73 +5,124 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>marginalia — a PDF reader that remembers where your notes came from</title>
 <meta name="description" content="Pull passages from any PDF onto a notes canvas, link the ones that relate, and click any note to jump straight back to its exact page. Everything stays on your device." />
-<link rel="icon" href="data:,">
+<link rel="icon" type="image/png" sizes="32x32" href="app/icons/favicon-32.png">
+<link rel="icon" type="image/png" sizes="64x64" href="app/icons/favicon-64.png">
+<link rel="apple-touch-icon" href="app/icons/apple-touch-icon.png">
 <link rel="stylesheet" href="css/landing.css" />
 </head>
 <body>
 
-<header class="nav">
+<div class="scroll-progress" id="scrollProgress" aria-hidden="true"></div>
+
+<header class="nav" id="siteNav">
   <a class="wordmark" href="#top">margin<em>alia</em></a>
-  <a class="nav-cta" href="app/index.html">Open the app</a>
+  <a class="nav-cta" href="app/">Open the app</a>
 </header>
 
 <main id="top">
 
   <section class="hero">
-    <div class="hero-copy">
-      <h1>Every excerpt<br>remembers its page.</h1>
+    <div class="hero-glow" aria-hidden="true"></div>
+    <div class="hero-copy reveal-up">
+      <p class="eyebrow">A PDF reader that remembers</p>
+      <h1>Every excerpt<br>remembers<br>its page.</h1>
       <p class="hero-sub">Pull passages from any PDF, link the ones that relate, and click a note to jump straight back to its page.</p>
-      <a class="btn-primary" href="app/index.html">Open the app</a>
+      <div class="hero-actions">
+        <a class="btn-primary" href="app/">Open the app</a>
+        <a class="btn-ghost" href="#how-it-works">See how it works <span class="chev">↓</span></a>
+      </div>
     </div>
     <div class="hero-art">
-      <img src="images/hero.webp" width="1680" height="1050" alt="Marginalia showing a PDF open beside a notes canvas with three linked excerpt cards" />
-    </div>
-  </section>
-
-  <section class="section how-it-works">
-    <h2>How it works</h2>
-
-    <div class="row row-text-image reveal">
-      <div class="row-text">
-        <h3>Pull a passage, not just a highlight</h3>
-        <p>Drag a marquee over any line, even on a scanned page with no selectable text, and it lands on your notes canvas as its own card.</p>
-      </div>
-      <div class="row-image">
-        <img src="images/reading.webp" width="1312" height="1024" alt="Two passages highlighted in a PDF, ready to be pulled onto the notes canvas" />
-      </div>
-    </div>
-
-    <div class="row row-image-text reveal">
-      <div class="row-image">
-        <img src="images/linking.webp" width="1364" height="899" alt="Two note cards connected by a labeled, arrowed thread reading Supports" />
-      </div>
-      <div class="row-text">
-        <h3>Link what relates, and say how</h3>
-        <p>Drag between two cards to connect them, then label the thread: supports, contradicts, references, or your own word. Reverse or delete it any time.</p>
-      </div>
-    </div>
-
-    <div class="row row-illustration reveal">
-      <div class="jump-diagram" aria-hidden="true">
-        <span class="jump-card">Note</span>
-        <span class="jump-track"><span class="jump-dot"></span></span>
-        <span class="jump-page">Page 14</span>
-      </div>
-      <div class="row-text row-text-centered">
-        <h3>Click a note, land on its page</h3>
-        <p>Every card remembers the document and page it came from. One click opens the PDF at that exact spot.</p>
+      <div class="hero-art-frame" id="heroArtFrame">
+        <img src="images/hero.webp" width="1680" height="1050" alt="Marginalia showing a PDF open beside a notes canvas with three linked excerpt cards" />
       </div>
     </div>
   </section>
 
-  <section class="section statement reveal">
-    <h2>Everything stays on your device.</h2>
-    <p>Your PDFs and notes are stored in your browser, not on a server. Nothing is uploaded, and there is no account to create.</p>
+  <section class="section feature-scroll" id="how-it-works">
+    <div class="section-head reveal-up">
+      <p class="eyebrow">How it works</p>
+      <h2>Three moves. That's the whole app.</h2>
+    </div>
+
+    <div class="feature-scroll-inner" id="featureScrollInner">
+      <div class="feature-sticky">
+        <div class="feature-media" id="featureMedia">
+          <img class="feature-img is-active" data-step="0" src="images/reading.webp" width="1312" height="1040" alt="Two passages highlighted in a PDF, ready to be pulled onto the notes canvas" />
+          <img class="feature-img" data-step="1" src="images/linking.webp" width="1364" height="898" alt="Two note cards connected by a labeled, arrowed thread reading Supports" />
+          <div class="feature-img jump-diagram-wrap" data-step="2">
+            <div class="jump-diagram" aria-hidden="true">
+              <span class="jump-card">Note</span>
+              <span class="jump-track"><span class="jump-dot"></span></span>
+              <span class="jump-page">Page 14</span>
+            </div>
+          </div>
+        </div>
+        <div class="feature-dots" aria-hidden="true">
+          <span class="feature-dot is-active" data-dot="0"></span>
+          <span class="feature-dot" data-dot="1"></span>
+          <span class="feature-dot" data-dot="2"></span>
+        </div>
+      </div>
+
+      <div class="feature-steps">
+        <div class="feature-step is-active" data-step="0">
+          <span class="step-num">01</span>
+          <h3>Pull a passage, not just a highlight</h3>
+          <p>Drag a marquee over any line, even on a scanned page with no selectable text, and it lands on your notes canvas as its own card.</p>
+        </div>
+        <div class="feature-step" data-step="1">
+          <span class="step-num">02</span>
+          <h3>Link what relates, and say how</h3>
+          <p>Drag between two cards to connect them, then label the thread: supports, contradicts, references, or your own word. Reverse or delete it any time.</p>
+        </div>
+        <div class="feature-step" data-step="2">
+          <span class="step-num">03</span>
+          <h3>Click a note, land on its page</h3>
+          <p>Every card remembers the document and page it came from. One click opens the PDF at that exact spot.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Static fallback shown only on narrow screens where the sticky
+         scrollytelling above is disabled (see the max-width media query in
+         landing.css) -- same three beats, plain stacked rows. -->
+    <div class="feature-fallback">
+      <div class="row reveal-up">
+        <div class="row-image"><img src="images/reading.webp" width="1312" height="1040" alt="Two passages highlighted in a PDF, ready to be pulled onto the notes canvas" /></div>
+        <div class="row-text"><span class="step-num">01</span><h3>Pull a passage, not just a highlight</h3><p>Drag a marquee over any line, even on a scanned page with no selectable text, and it lands on your notes canvas as its own card.</p></div>
+      </div>
+      <div class="row reveal-up">
+        <div class="row-image"><img src="images/linking.webp" width="1364" height="898" alt="Two note cards connected by a labeled, arrowed thread reading Supports" /></div>
+        <div class="row-text"><span class="step-num">02</span><h3>Link what relates, and say how</h3><p>Drag between two cards to connect them, then label the thread: supports, contradicts, references, or your own word. Reverse or delete it any time.</p></div>
+      </div>
+      <div class="row reveal-up">
+        <div class="row-image">
+          <div class="jump-diagram" aria-hidden="true">
+            <span class="jump-card">Note</span>
+            <span class="jump-track"><span class="jump-dot"></span></span>
+            <span class="jump-page">Page 14</span>
+          </div>
+        </div>
+        <div class="row-text"><span class="step-num">03</span><h3>Click a note, land on its page</h3><p>Every card remembers the document and page it came from. One click opens the PDF at that exact spot.</p></div>
+      </div>
+    </div>
   </section>
 
-  <section class="section closing reveal">
-    <h2>Start pulling excerpts.</h2>
-    <a class="btn-primary" href="app/index.html">Open the app</a>
+  <section class="statement">
+    <div class="statement-glow" aria-hidden="true"></div>
+    <div class="statement-inner reveal-up">
+      <p class="eyebrow eyebrow-inverse">No account. No upload.</p>
+      <h2>Everything stays on your device.</h2>
+      <p>Your PDFs and notes are stored in your browser, not on a server. Nothing is uploaded, and there is nothing to sign up for.</p>
+    </div>
+  </section>
+
+  <section class="section closing">
+    <div class="closing-inner reveal-up">
+      <h2>Start pulling excerpts.</h2>
+      <a class="btn-primary" href="app/">Open the app</a>
+    </div>
   </section>
 
 </main>
