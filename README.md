@@ -3,6 +3,9 @@
 **[Try it →](https://marginalianotes.app/)** · free, no
 account, nothing uploaded · MIT licensed
 
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-%E2%98%95-FFDD00?style=flat&labelColor=222)](https://buymeacoffee.com/dikshantraj09)
+[![GitHub stars](https://img.shields.io/github/stars/dikshantraj09/marginalia?style=flat&label=Star&color=C98A2E)](https://github.com/dikshantraj09/marginalia)
+
 ![Marginalia: a PDF open beside a notes canvas with linked excerpt cards](images/hero.webp)
 
 A PDF reader with a freeform notes canvas next to it. Pull excerpts out of
@@ -88,11 +91,16 @@ vendor/pdfjs/           vendored PDF.js build (offline, no CDN dependency)
 
 Cloud sync across devices and PDF markup/drawing tools.
 
-## Support
+## Support Marginalia ☕
 
-Marginalia is free, with no ads and no account. If it's useful to you, you
-can [buy me a coffee](https://buymeacoffee.com/dikshantraj09). It helps pay
-for hosting and time for new features.
+Marginalia is free forever: no ads, no account, no tracking. It's built by one
+person in their spare time. If it saved you an evening of hunting for "which
+page was that on?", a coffee keeps it going: hosting, the domain, and time for
+what's next (encrypted sync, ask-your-notes AI, a web clipper).
+
+<a href="https://buymeacoffee.com/dikshantraj09"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" height="50"></a>
+
+Can't chip in? A ⭐ on this repo helps just as much. It's how other readers find it.
 
 ## License
 
