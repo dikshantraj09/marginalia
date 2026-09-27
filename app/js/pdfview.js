@@ -286,6 +286,11 @@ export default class PdfView {
     await page.render({ canvasContext: ctx, viewport: renderViewport }).promise;
 
     const textContent = await page.getTextContent();
+    // PDF.js sizes every span as calc(var(--scale-factor) * Npx) and fits
+    // its scaleX to that size. Without the variable the font-size falls
+    // back to the inherited 16px, so spans (and the highlights and marquee
+    // hits measured from them) come out wider than the text they cover.
+    info.textLayerDiv.style.setProperty('--scale-factor', cssViewport.scale);
     const textLayer = new pdfjsLib.TextLayer({
       textContentSource: textContent,
       container: info.textLayerDiv,
