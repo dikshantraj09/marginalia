@@ -1,7 +1,7 @@
 # Shows a "Sponsor" button on the GitHub repo page.
 # https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/displaying-a-sponsor-button-in-your-repository
 
-github: [dikshantraj09]            # GitHub Sponsors: needs the profile set up at github.com/sponsors
-# ko_fi: your-kofi-username        # uncomment once you have a Ko-fi page
-# buy_me_a_coffee: your-username   # uncomment once you have a Buy Me a Coffee page
-# custom: ["https://marginalianotes.app/support"]   # any other link, e.g. a UPI/Razorpay page
+buy_me_a_coffee: dikshantraj09
+# github: [dikshantraj09]          # uncomment once the GitHub Sponsors profile is approved
+# ko_fi: your-kofi-username
+# custom: ["https://marginalianotes.app/support"]

@@ -88,6 +88,12 @@ vendor/pdfjs/           vendored PDF.js build (offline, no CDN dependency)
 
 Cloud sync across devices and PDF markup/drawing tools.
 
+## Support
+
+Marginalia is free, with no ads and no account. If it's useful to you, you
+can [buy me a coffee](https://buymeacoffee.com/dikshantraj09). It helps pay
+for hosting and time for new features.
+
 ## License
 
 [MIT](LICENSE) © 2026 Dikshant Raj.
