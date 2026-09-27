@@ -450,6 +450,12 @@ export default class NotesCanvas {
 
   _wireCard(el, c, noteEl, nub, delBtn) {
     let dragging = false, moved = false, startX, startY, origX, origY;
+    // On touch, a quote long enough to scroll inside the card shares the
+    // gesture with dragging (touch-action is `none` on it so the card can
+    // be grabbed anywhere — see .card-quote in the CSS). The first few px
+    // of movement decide: a mostly-vertical swipe that the quote can still
+    // scroll in that direction scrolls the quote; anything else drags.
+    let mode = null, scrollQuote = null, startScrollTop = 0;
     // Redrawing every link thread on every raw pointermove (_drawLinks
     // wipes and rebuilds the whole SVG group, and _edgePoint reads
     // el.offsetHeight per linked card, forcing layout) is more reflow work
@@ -470,8 +476,11 @@ export default class NotesCanvas {
       }
       if (e.target === delBtn) return;
       if (e.target === noteEl || noteEl.contains(e.target)) return; // let editing work normally
-      dragging = true; moved = false;
+      dragging = true; moved = false; mode = null;
       startX = e.clientX; startY = e.clientY;
+      const quote = e.pointerType !== 'mouse' && e.target.closest && e.target.closest('.card-quote');
+      scrollQuote = quote && quote.scrollHeight > quote.clientHeight + 1 ? quote : null;
+      startScrollTop = scrollQuote ? scrollQuote.scrollTop : 0;
       origX = c.x; origY = c.y;
       try { el.setPointerCapture(e.pointerId); } catch (err) { /* ignore — synthetic/edge pointer events */ }
       this._closeLinkMenu();
@@ -491,9 +500,21 @@ export default class NotesCanvas {
     });
     el.addEventListener('pointermove', (e) => {
       if (!dragging) return;
+      const sx = e.clientX - startX, sy = e.clientY - startY;
+      if (!mode) {
+        if (Math.abs(sx) + Math.abs(sy) < 6) return;
+        const q = scrollQuote;
+        const canScroll = q && Math.abs(sy) > Math.abs(sx) * 1.5 &&
+          (sy < 0 ? q.scrollTop + q.clientHeight < q.scrollHeight - 1 : q.scrollTop > 0);
+        mode = canScroll ? 'scroll' : 'drag';
+        moved = true;
+      }
+      if (mode === 'scroll') {
+        scrollQuote.scrollTop = startScrollTop - sy;
+        return;
+      }
       // Same screen-to-world conversion as panning above.
-      const dx = (e.clientX - startX) / this.zoom, dy = (e.clientY - startY) / this.zoom;
-      if (Math.abs(dx) + Math.abs(dy) > 3) moved = true;
+      const dx = sx / this.zoom, dy = sy / this.zoom;
       // No lower bound — the canvas is infinite in every direction, so a
       // card is free to move into negative world coordinates too.
       c.x = origX + dx;
@@ -503,7 +524,7 @@ export default class NotesCanvas {
       linkRedrawThrottle.call();
     });
     const endDrag = () => {
-      if (dragging && moved) {
+      if (dragging && moved && mode === 'drag') {
         // Finish with one synchronous redraw at the card's final position —
         // otherwise a coalesced-away in-flight frame could leave the
         // thread one step behind where the card actually stopped.
@@ -513,8 +534,9 @@ export default class NotesCanvas {
       if (dragging && !moved) {
         if (this.cb.onCardClick) this.cb.onCardClick(c);
       }
-      if (dragging && moved) this._persistCard(c);
+      if (dragging && moved && mode === 'drag') this._persistCard(c);
       dragging = false;
+      mode = null;
       this._draggingCard = false;
     };
     el.addEventListener('pointerup', endDrag);

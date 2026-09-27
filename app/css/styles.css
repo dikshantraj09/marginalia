@@ -1032,8 +1032,8 @@ button { font-family: inherit; }
   /* A scrollable box starts its own touch-action scope, so the card's
      touch-action: none didn't reach it: on a tablet, a finger on the
      quote was taken by the browser as a scroll and the card wouldn't drag
-     unless grabbed by its footer. Dragging the card from anywhere matters
-     more on touch; long quotes still scroll with a mouse wheel/trackpad. */
+     unless grabbed by its footer. canvas.js (_wireCard) scrolls a long
+     quote itself on a mostly-vertical touch swipe, and drags otherwise. */
   touch-action: none;
 }
 .card-image {
