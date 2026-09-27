@@ -3,6 +3,7 @@ import Rail from './rail.js';
 import PdfView from './pdfview.js';
 import NotesCanvas from './canvas.js';
 import Tour from './tour.js';
+import { showAlert } from './modal.js';
 
 const readingEl = document.getElementById('reading');
 const pdfPagesEl = document.getElementById('pdfPages');
@@ -273,10 +274,39 @@ pullImageBtn.addEventListener('click', () => pullSelection({ asImage: true }));
 
 // -------- importing PDFs --------
 
+// Nothing here previously caught a failure, so the two realistic ways this
+// can go wrong both failed silently: picking a file the browser can't read
+// back as bytes (rare — a permissions error, a file that vanished after the
+// picker closed), and IndexedDB refusing the write because the browser's
+// storage quota for this origin is full (a large PDF is exactly the case
+// most likely to hit that). Either way `importPdf` used to just reject with
+// nothing awaiting it — an unhandled promise rejection, invisible to the
+// person who clicked Import and is now looking at a picker that closed and
+// nothing else happening. Route both into the one error-dialog pattern this
+// app already has (modal.js) rather than inventing a second one.
 async function importPdf(file) {
-  const arrayBuffer = await file.arrayBuffer();
+  let arrayBuffer;
+  try {
+    arrayBuffer = await file.arrayBuffer();
+  } catch (err) {
+    await showAlert('Couldn’t read "' + file.name + '". Try importing it again.');
+    return;
+  }
   const doc = { id: DB.uid('doc'), name: file.name, folderId: null, createdAt: Date.now(), blob: arrayBuffer };
-  await DB.put('documents', doc);
+  try {
+    await DB.put('documents', doc);
+  } catch (err) {
+    if (err && err.name === 'QuotaExceededError') {
+      await showAlert(
+        'Your browser’s storage is full, so "' + file.name + '" couldn’t be saved. ' +
+        'Everything in Marginalia lives only in this browser (see the storage indicator in the sidebar) ' +
+        '— free up space by removing a PDF or notes canvas you no longer need, then try again.'
+      );
+    } else {
+      await showAlert('Couldn’t save "' + file.name + '". Try importing it again.');
+    }
+    return;
+  }
   await rail.addDocument(doc);
   await openDocument(doc.id);
 }
