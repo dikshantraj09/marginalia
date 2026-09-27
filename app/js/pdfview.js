@@ -80,6 +80,28 @@ export default class PdfView {
     // pointerup, so the person still gets a selection instead of nothing.
     window.addEventListener('pointercancel', (e) => this._onPointerUp(e));
 
+    // Trackpad pinch: Chrome/Firefox/Edge report it as `wheel` with ctrlKey
+    // set; Safari as its own gesture* events. Without handling them the
+    // browser zooms the whole app instead of the PDF. Plain two-finger
+    // scrolling is left alone — the pane already scrolls natively.
+    this._zoomGesture = null; // live pinch preview state, see _startZoomGesture
+    this._wheelZoomEndTimer = null;
+    this.scrollHost.addEventListener('wheel', (e) => this._onWheel(e), { passive: false });
+    this.scrollHost.addEventListener('gesturestart', (e) => {
+      e.preventDefault();
+      if (!this.pdf) return;
+      this._startZoomGesture(e.clientX, e.clientY);
+    });
+    this.scrollHost.addEventListener('gesturechange', (e) => {
+      e.preventDefault();
+      if (!this._zoomGesture) return;
+      this._previewZoomGesture(this._zoomGesture.z0 * e.scale, e.clientX, e.clientY);
+    });
+    this.scrollHost.addEventListener('gestureend', (e) => {
+      e.preventDefault();
+      this._endZoomGesture();
+    });
+
     this._pageObserver = new IntersectionObserver(
       (entries) => this._onPageIntersect(entries),
       { root: this.scrollHost, threshold: [0, 0.25, 0.5, 0.75, 1] }
@@ -107,6 +129,10 @@ export default class PdfView {
     this._cancelDrag();
     this._pinch = null;
     this._pinchThrottle.cancel();
+    this._zoomGesture = null;
+    clearTimeout(this._wheelZoomEndTimer);
+    this.container.style.transform = '';
+    this.container.style.transformOrigin = '';
     this._pointers.clear();
     this._textCache.clear();
     this._searchToken++;
@@ -698,6 +724,7 @@ export default class PdfView {
       if (this._pointers.size < 2) {
         this._pinch = null;
         this._pinchThrottle.cancel();
+        this._endZoomGesture();
       }
       return;
     }
@@ -768,36 +795,116 @@ export default class PdfView {
     const pts = ids.map((id) => this._pointers.get(id));
     const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) || 1;
     const mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
-    // The reading pane doesn't move during the gesture, so its screen rect
-    // is a valid, constant reference for the whole pinch.
-    const hostRect = this.scrollHost.getBoundingClientRect();
-    this._pinch = {
-      ids,
-      startDist: dist,
-      startZoom: this.zoom,
-      hostRect,
-      // The pre-zoom ("un-scaled") position of whatever point was under
-      // the pinch's midpoint when it started, held fixed and used on every
-      // move to recompute the scroll offset that keeps that same point
-      // under the fingers as they spread, pinch, or drag together.
-      worldX: (this.scrollHost.scrollLeft + (mid.x - hostRect.left)) / this.zoom,
-      worldY: (this.scrollHost.scrollTop + (mid.y - hostRect.top)) / this.zoom,
-    };
+    this._pinch = { ids, startDist: dist };
+    this._startZoomGesture(mid.x, mid.y);
   }
 
   _updatePinch() {
     const p = this._pinch;
+    const g = this._zoomGesture;
     const pts = p.ids.map((id) => this._pointers.get(id));
-    if (pts.some((pt) => !pt)) { this._pinch = null; return; } // a tracked pointer vanished without an up event
+    if (!g || pts.some((pt) => !pt)) { this._pinch = null; this._endZoomGesture(); return; } // a tracked pointer vanished without an up event
     const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) || 1;
     const mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
-    // setZoom resets scrollLeft to 0 as a side effect (see its own comment
-    // — that's the fix for the unrelated search-jump bug), so the
-    // pinch-anchored scroll position below has to be set AFTER calling it,
-    // not before, to actually take effect.
-    const newZoom = this.setZoom(p.startZoom * (dist / p.startDist));
-    this.scrollHost.scrollLeft = p.worldX * newZoom - (mid.x - p.hostRect.left);
-    this.scrollHost.scrollTop = p.worldY * newZoom - (mid.y - p.hostRect.top);
+    this._previewZoomGesture(g.z0 * (dist / p.startDist), mid.x, mid.y);
+  }
+
+  // ---------- zoom gestures (touch pinch, trackpad pinch) ----------
+  // Setting CSS `zoom` re-lays-out every page of the document, which on a
+  // long PDF is far too slow to do on every frame of a pinch. So while a
+  // gesture is in progress the pages are only *previewed* at the new size
+  // with a compositor-only `transform: scale()`, anchored under the
+  // fingers/cursor; the real zoom is applied once, when the gesture ends,
+  // with the scroll position set so the same spot stays under the fingers.
+
+  _startZoomGesture(clientX, clientY) {
+    if (this._zoomGesture) return;
+    const cRect = this.container.getBoundingClientRect();
+    const z0 = this.zoom;
+    this._zoomGesture = {
+      z0,
+      z: z0,
+      start: { x: clientX, y: clientY },
+      mid: { x: clientX, y: clientY },
+      // The document point under the anchor, in the page container's own
+      // pre-zoom px. Measured from the container rather than the scroll
+      // host so any padding around the pages (which doesn't scale) can't
+      // skew where that point lands after the zoom is applied.
+      worldX: (clientX - cRect.left) / z0,
+      worldY: (clientY - cRect.top) / z0,
+      anchor: null,
+    };
+    // Prefer anchoring to the page under the fingers: after a zoom, page
+    // heights are each rounded to whole px, and over dozens of pages above
+    // the viewport that rounding adds up to a visible jump if the anchor is
+    // measured from the top of the document instead.
+    for (const el of this.container.children) {
+      const r = el.getBoundingClientRect();
+      if (r.height && clientY >= r.top && clientY <= r.bottom) {
+        this._zoomGesture.anchor = {
+          el,
+          fx: (clientX - r.left) / (r.width || 1),
+          fy: (clientY - r.top) / r.height,
+        };
+        break;
+      }
+    }
+    // The container's own lengths (its transform and transform-origin) are
+    // in its local, pre-zoom px, so the anchor is expressed in those too.
+    this.container.style.transformOrigin =
+      ((clientX - cRect.left) / z0) + 'px ' + ((clientY - cRect.top) / z0) + 'px';
+    this.container.style.willChange = 'transform';
+  }
+
+  _previewZoomGesture(targetZoom, clientX, clientY) {
+    const g = this._zoomGesture;
+    if (!g) return;
+    g.z = Math.min(2.5, Math.max(0.5, targetZoom));
+    g.mid = { x: clientX, y: clientY };
+    const tx = (clientX - g.start.x) / g.z0;
+    const ty = (clientY - g.start.y) / g.z0;
+    this.container.style.transform =
+      'translate(' + tx + 'px, ' + ty + 'px) scale(' + (g.z / g.z0) + ')';
+    if (this.onZoomChange) this.onZoomChange(g.z);
+  }
+
+  _endZoomGesture() {
+    const g = this._zoomGesture;
+    if (!g) return;
+    this._zoomGesture = null;
+    clearTimeout(this._wheelZoomEndTimer);
+    this.container.style.transform = '';
+    this.container.style.transformOrigin = '';
+    this.container.style.willChange = '';
+    if (g.z === g.z0) return;
+    // setZoom resets scrollLeft to 0 as a side effect (see its own
+    // comment), so the anchored scroll position has to be set after it:
+    // scroll by however far the anchored point now sits from the fingers.
+    const z = this.setZoom(g.z);
+    if (g.anchor && g.anchor.el.isConnected) {
+      const r = g.anchor.el.getBoundingClientRect();
+      this.scrollHost.scrollLeft += r.left + g.anchor.fx * r.width - g.mid.x;
+      this.scrollHost.scrollTop += r.top + g.anchor.fy * r.height - g.mid.y;
+    } else {
+      const cRect = this.container.getBoundingClientRect();
+      this.scrollHost.scrollLeft += cRect.left + g.worldX * z - g.mid.x;
+      this.scrollHost.scrollTop += cRect.top + g.worldY * z - g.mid.y;
+    }
+  }
+
+  _onWheel(e) {
+    if (!(e.ctrlKey || e.metaKey) || !this.pdf) return; // plain scrolling stays native
+    e.preventDefault();
+    if (!this._zoomGesture) this._startZoomGesture(e.clientX, e.clientY);
+    const g = this._zoomGesture;
+    const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? this.scrollHost.clientHeight : 1;
+    // Trackpad pinches send many small deltas; a mouse wheel with Ctrl held
+    // sends big ones. Clamping keeps one wheel notch to a sane step.
+    const delta = Math.max(-50, Math.min(50, e.deltaY * unit));
+    this._previewZoomGesture(g.z * Math.exp(-delta * 0.01), e.clientX, e.clientY);
+    // Wheel events have no "end", so commit once they stop arriving.
+    clearTimeout(this._wheelZoomEndTimer);
+    this._wheelZoomEndTimer = setTimeout(() => this._endZoomGesture(), 180);
   }
 
   // Finds every text span whose box substantially overlaps the dragged

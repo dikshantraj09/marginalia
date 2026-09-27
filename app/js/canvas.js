@@ -291,6 +291,62 @@ export default class NotesCanvas {
     this.canvasEl.addEventListener('pointermove', onMove, { passive: false });
     window.addEventListener('pointerup', onUp);
     window.addEventListener('pointercancel', onUp);
+
+    // Trackpads and mouse wheels. A trackpad never produces pointer events
+    // for its gestures: two-finger scrolling arrives as `wheel` events, and
+    // a pinch arrives as `wheel` with ctrlKey set (Chrome, Firefox, Edge)
+    // or as Safari's own gesturestart/gesturechange. Two-finger scroll pans
+    // the canvas; pinch (or Ctrl/⌘ + wheel) zooms around the cursor, using
+    // the same anchoring as the touch pinch above.
+    const zoomAround = (clientX, clientY, newZoomRaw) => {
+      const origin = this.canvasEl.getBoundingClientRect();
+      const worldX = (clientX - origin.left) / this.zoom - this.pan.x;
+      const worldY = (clientY - origin.top) / this.zoom - this.pan.y;
+      const z = this.setZoom(newZoomRaw);
+      this._setPan((clientX - origin.left) / z - worldX, (clientY - origin.top) / z - worldY);
+    };
+
+    // Wheel events fire far faster than frames; accumulate and apply once
+    // per frame so a long, card-heavy canvas doesn't reflow per event.
+    let wheelPan = { x: 0, y: 0 }, wheelZoom = 1, wheelAt = null;
+    const wheelThrottle = rafThrottle(() => {
+      if (wheelZoom !== 1 && wheelAt) zoomAround(wheelAt.x, wheelAt.y, this.zoom * wheelZoom);
+      if (wheelPan.x || wheelPan.y) {
+        this._setPan(this.pan.x - wheelPan.x / this.zoom, this.pan.y - wheelPan.y / this.zoom);
+      }
+      wheelPan = { x: 0, y: 0 }; wheelZoom = 1; wheelAt = null;
+    });
+    this.canvasEl.addEventListener('wheel', (e) => {
+      if (e.target.closest && e.target.closest('.link-menu')) return;
+      // Let a card's own scrollable quote scroll when it can (plain scroll
+      // only — a pinch over a card should still zoom the canvas).
+      const quote = !e.ctrlKey && e.target.closest && e.target.closest('.card-quote');
+      if (quote && quote.scrollHeight > quote.clientHeight) return;
+      e.preventDefault();
+      const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? this.canvasEl.clientHeight : 1;
+      if (e.ctrlKey || e.metaKey) {
+        wheelZoom *= Math.exp(-Math.max(-50, Math.min(50, e.deltaY * unit)) * 0.01);
+        wheelAt = { x: e.clientX, y: e.clientY };
+      } else {
+        wheelPan.x += e.deltaX * unit;
+        wheelPan.y += e.deltaY * unit;
+      }
+      wheelThrottle.call();
+    }, { passive: false });
+
+    // Safari (macOS) reports trackpad pinch through its non-standard
+    // GestureEvent instead of ctrl+wheel. preventDefault also stops the
+    // whole page from zooming.
+    let gestureStartZoom = 1;
+    this.canvasEl.addEventListener('gesturestart', (e) => {
+      e.preventDefault();
+      gestureStartZoom = this.zoom;
+    });
+    this.canvasEl.addEventListener('gesturechange', (e) => {
+      e.preventDefault();
+      zoomAround(e.clientX, e.clientY, gestureStartZoom * e.scale);
+    });
+    this.canvasEl.addEventListener('gestureend', (e) => e.preventDefault());
   }
 
   _renderAll() {
@@ -541,9 +597,14 @@ export default class NotesCanvas {
   _edgePoint(from, card, gap) {
     const center = this._cardCenter(card);
     const el = this.cardEls.get(card.id);
-    // offsetHeight is the zoomed (rendered) height — convert back to the
-    // world units `card.x`/`card.y` and everything else here use.
-    const height = (el && el.offsetHeight / this.zoom) || 90;
+    // Browsers disagree on whether offsetHeight under an ancestor's CSS
+    // `zoom` is scaled (older engines) or not (current Chrome/Firefox, which
+    // report layout px). Dividing by this.zoom unconditionally made cards
+    // look several times taller when zoomed out, so arrows ended in empty
+    // space below them. Calibrating against the card's fixed 200px world
+    // width converts to world units correctly under either behavior.
+    const scale = (el && el.offsetWidth / 200) || 1;
+    const height = (el && el.offsetHeight / scale) || 90;
     const rect = { left: card.x, right: card.x + 200, top: card.y, bottom: card.y + height };
     const entry = segmentRectEntry(from, center, rect);
     if (!entry) return { x: center.x, y: center.y, axis: 'x' };
