@@ -14,6 +14,7 @@
 // on any document, table or not, and identically on mouse and touch.
 
 import * as pdfjsLib from '../vendor/pdfjs/pdf.min.mjs';
+import { rafThrottle } from './raf-throttle.js';
 // Resolve explicitly against this module's own URL (not the page's URL) —
 // the worker is constructed by the browser relative to document location by
 // default, which breaks whenever the page isn't served from a plain root
@@ -65,7 +66,8 @@ export default class PdfView {
     this._drag = null; // active marquee gesture state, or null
     this._pointers = new Map(); // pointerId -> last known {x, y}, for every finger currently down
     this._pinch = null; // active two-finger pinch-zoom gesture state, or null
-    this._pinchRAF = null; // rAF handle for a pending, not-yet-applied pinch update, or null
+    // Coalesces pinch updates to one per animation frame — see raf-throttle.js.
+    this._pinchThrottle = rafThrottle(() => { if (this._pinch) this._updatePinch(); });
     this.container.addEventListener('pointerdown', (e) => this._onPointerDown(e));
     this.container.addEventListener('pointermove', (e) => this._onPointerMove(e), { passive: false });
     window.addEventListener('pointerup', (e) => this._onPointerUp(e));
@@ -104,7 +106,7 @@ export default class PdfView {
     this._lazyObserver.disconnect();
     this._cancelDrag();
     this._pinch = null;
-    if (this._pinchRAF !== null) { cancelAnimationFrame(this._pinchRAF); this._pinchRAF = null; }
+    this._pinchThrottle.cancel();
     this._pointers.clear();
     this._textCache.clear();
     this._searchToken++;
@@ -626,12 +628,7 @@ export default class PdfView {
       // positions by the time the frame actually runs, keeps the visual
       // result identical while cutting the reflow rate to what the screen
       // can actually display.
-      if (this._pinchRAF === null) {
-        this._pinchRAF = requestAnimationFrame(() => {
-          this._pinchRAF = null;
-          if (this._pinch) this._updatePinch();
-        });
-      }
+      this._pinchThrottle.call();
       return;
     }
 
@@ -700,7 +697,7 @@ export default class PdfView {
       // remaining finger just needs a fresh pointerdown to do anything.
       if (this._pointers.size < 2) {
         this._pinch = null;
-        if (this._pinchRAF !== null) { cancelAnimationFrame(this._pinchRAF); this._pinchRAF = null; }
+        this._pinchThrottle.cancel();
       }
       return;
     }
