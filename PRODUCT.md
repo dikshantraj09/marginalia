@@ -23,7 +23,7 @@ The note→page jump-back mechanic (click any note, land exactly back on the pag
 ## Operating Context
 
 - Static site, no backend, no build step (vanilla HTML/CSS/JS, PDF.js vendored locally).
-- Deployed at https://marginalia.dikshantraj09.workers.dev/ (Cloudflare Workers), GitHub repo dikshantraj09/marginalia. Deploys are pushed by the user, not this session.
+- Deployed at https://marginalianotes.app/ (Cloudflare Workers; the original https://marginalia.dikshantraj09.workers.dev/ still serves the same build), GitHub repo dikshantraj09/marginalia. Deploys are pushed by the user, not this session.
 - Installable as a PWA (manifest + service worker cache the app shell for offline use).
 - Text selection in the PDF is a drag-marquee (draw a box) rather than native browser text selection, chosen for accuracy on tables/multi-column layouts where visual reading order doesn't match underlying text order.
 - PDFs and notes canvases are organized independently in their own folder trees; one canvas can hold excerpts from multiple PDFs.
@@ -35,7 +35,7 @@ The note→page jump-back mechanic (click any note, land exactly back on the pag
 
 ## Evidence on Hand
 
-- Live product at https://marginalia.dikshantraj09.workers.dev/, README.md, and full app source in this repo.
+- Live product at https://marginalianotes.app/, README.md, and full app source in this repo.
 - No real user testimonials, customers, or usage numbers yet — future copy must not fabricate these.
 
 ## Product Principles

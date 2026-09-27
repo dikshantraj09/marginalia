@@ -1,6 +1,6 @@
 # Marginalia
 
-**[Try it →](https://marginalia.dikshantraj09.workers.dev/)** · free, no
+**[Try it →](https://marginalianotes.app/)** · free, no
 account, nothing uploaded · MIT licensed
 
 ![Marginalia: a PDF open beside a notes canvas with linked excerpt cards](images/hero.webp)
