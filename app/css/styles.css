@@ -1138,7 +1138,10 @@ button { font-family: inherit; }
   font-style: italic;
   color: var(--ink-faint);
   font-size: 13px;
-  max-width: 260px;
+  /* #canvasInner is zero-width, so without an explicit width this
+     absolutely-positioned hint shrinks to one word per line. */
+  width: 260px;
+  max-width: calc(100vw - 72px);
   pointer-events: none;
 }
 
