@@ -114,6 +114,23 @@ const rail = new Rail(railEl, {
   onCanvasDeleted: (canvasId) => {
     if (canvasId === currentCanvasId) closeCanvas();
   },
+  // The undo half of onDocDeleted/onCanvasDeleted above — Rail's own undo
+  // toast already put the document/canvas row and its cards/links back in
+  // the database and the folder tree by the time these fire; this just
+  // catches up whichever canvas is on screen right now, since the DB being
+  // correct again doesn't repaint it on its own.
+  onDocRestored: (doc, cards, links) => {
+    if (!currentCanvasId) return;
+    const mine = cards.filter((c) => c.canvasId === currentCanvasId);
+    const myLinks = (links || []).filter((l) => mine.some((c) => c.id === l.a || c.id === l.b));
+    if (mine.length) canvas.restoreCards(mine, myLinks);
+  },
+  onCanvasRestored: (cv, cards, links) => {
+    // Deleting a canvas always closes it first, so it can't still be the
+    // open one here — but if a future change ever makes that possible,
+    // reload it from the (now-restored) DB rather than leaving stale UI.
+    if (cv.id === currentCanvasId) canvas.setCanvas(cv.id, cards, links);
+  },
   onDocRenamed: (doc) => {
     if (doc.id === currentDocId) docTitleEl.textContent = doc.name;
     if (currentCanvasId) canvas.renameDocOnCards(doc.id, doc.name);

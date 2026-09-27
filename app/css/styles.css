@@ -7,9 +7,16 @@
   --rail: #EFECE3;
   --ink: #221F1B;
   --ink-soft: #6B6459;
-  --ink-faint: #9C9585;
+  /* Darkened from #9C9585 to clear 4.5:1 against the panel backgrounds it
+     sits on (was ~2.5-2.7:1) -- see impeccable critique 2026-09-27. */
+  --ink-faint: #6D685D;
   --rule: #DCD6C6;
   --accent: #C98A2E;
+  /* --accent itself is under 3:1 against --paper/--rail, fine for the
+     borders/dots/SVG strokes it's used for but not for text. --accent-text
+     is the same hue darkened to clear 4.5:1 for actual text uses (the
+     wordmark, page tags, etc.); --accent is left alone everywhere else. */
+  --accent-text: #78521B;
   --accent-soft: #F0DBB4;
   --accent-2: #3C6E68;
   --accent-2-soft: #D7E6E2;
@@ -30,9 +37,14 @@
   --rail: #1C1A13;
   --ink: #EDE7D8;
   --ink-soft: #A69C87;
-  --ink-faint: #6E6553;
+  /* Lightened from #6E6553 to clear 4.5:1 against the dark panel
+     backgrounds (was ~3.2:1) -- see impeccable critique 2026-09-27. */
+  --ink-faint: #8B8375;
   --rule: #322E22;
   --accent: #D9A44C;
+  /* Already clears 8.5:1 against dark backgrounds as text, so no darker
+     variant is needed here -- accent-text just mirrors accent. */
+  --accent-text: var(--accent);
   --accent-soft: #3A2F19;
   --accent-2: #5FA69C;
   --accent-2-soft: #16302C;
@@ -171,7 +183,7 @@ button { font-family: inherit; }
   z-index: 41;
 }
 .wordmark { font-family: 'Fraunces', serif; font-weight: 600; font-size: 19px; }
-.wordmark em { color: var(--accent); font-style: italic; }
+.wordmark em { color: var(--accent-text); font-style: italic; }
 .doc-title { font-size: 13px; color: var(--ink-soft); padding-left: 14px; border-left: 1px solid var(--rule); max-width: 40vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .import-btn {
   background: var(--ink);
@@ -283,7 +295,7 @@ button { font-family: inherit; }
   color: var(--ink-faint);
   font-weight: 400;
 }
-.rail h3 .add:hover { color: var(--accent); }
+.rail h3 .add:hover { color: var(--accent-text); }
 .rail h3 .h3-actions { display: flex; align-items: center; gap: 10px; }
 .rail-group { margin-bottom: 20px; }
 .rail-tree { display: flex; flex-direction: column; gap: 1px; }
@@ -352,7 +364,7 @@ button { font-family: inherit; }
   width: 16px;
   text-align: center;
 }
-.row-actions span:hover { color: var(--accent); }
+.row-actions span:hover { color: var(--accent-text); }
 .row-actions span[data-act="del"]:hover { color: var(--danger); }
 .folder-row .chev { font-size: 10px; width: 10px; color: var(--ink-faint); transition: transform .12s; }
 .folder-row.collapsed .chev { transform: rotate(-90deg); }
@@ -579,7 +591,7 @@ button { font-family: inherit; }
   flex-shrink: 0;
   font-size: 10.5px;
   font-weight: 600;
-  color: var(--accent);
+  color: var(--accent-text);
   background: var(--accent-soft);
   border-radius: 4px;
   padding: 2px 5px;
@@ -601,7 +613,7 @@ button { font-family: inherit; }
 .bookmark-item .del:hover { color: var(--danger); }
 
 /* Filled/active star for "this page is bookmarked" */
-#bookmarkPageToggle.active { color: var(--accent); }
+#bookmarkPageToggle.active { color: var(--accent-text); }
 #bookmarkPageToggle.active svg { fill: var(--accent); }
 
 /* ---------- search highlights ---------- */
@@ -850,7 +862,7 @@ button { font-family: inherit; }
   cursor: pointer;
 }
 .canvas-copy-ai:hover { color: var(--ink); border-color: var(--ink-faint); }
-.canvas-copy-ai.is-done { color: var(--accent); border-color: var(--accent); }
+.canvas-copy-ai.is-done { color: var(--accent-text); border-color: var(--accent); }
 
 /* Slim tab that reopens the notes panel once it's collapsed — lives
    outside .canvas-wrap so it stays visible while that panel is hidden. */
@@ -972,7 +984,7 @@ button { font-family: inherit; }
   cursor: pointer;
 }
 .link-menu-type:hover { border-color: var(--ink-faint); color: var(--ink); }
-.link-menu-type.active { background: var(--accent); border-color: var(--accent); color: var(--paper); }
+.link-menu-type.active { background: var(--accent); border-color: var(--accent); color: var(--ink); }
 .link-menu-custom { margin-bottom: 8px; }
 .link-menu-input {
   width: 100%;
@@ -1015,6 +1027,23 @@ button { font-family: inherit; }
   touch-action: none;
 }
 .card:active { cursor: grabbing; }
+.card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+/* The card currently waiting for a keyboard-chosen target (L was pressed
+   on it; see canvas.js's _startKeyboardLink) — a stronger, dashed outline
+   distinguishes "this is the link's source and I'm mid-gesture" from a
+   plain focus ring, since both can be visible on the same card at once. */
+.card.link-source {
+  outline: 2px dashed var(--accent-2);
+  outline-offset: 3px;
+}
+.card .del:focus-visible,
+.card .link-nub:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 .card-quote {
   font-family: 'Source Serif 4', serif;
   font-size: 12.5px;
@@ -1069,7 +1098,7 @@ button { font-family: inherit; }
 }
 .card-note:focus { color: var(--ink); }
 .card .meta { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; }
-.card .page-tag { font-size: 10.5px; color: var(--accent); font-weight: 600; }
+.card .page-tag { font-size: 10.5px; color: var(--accent-text); font-weight: 600; }
 .card .card-actions { display: flex; align-items: center; gap: 6px; }
 .card .link-nub { position: relative; width: 13px; height: 13px; border-radius: 50%; background: var(--paper); border: 1.5px solid var(--ink-faint); cursor: crosshair; }
 .card .link-nub:hover { border-color: var(--accent-2); background: var(--accent-2-soft); }
@@ -1164,6 +1193,49 @@ button { font-family: inherit; }
 .modal-actions .modal-ok.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
 .modal-actions .modal-ok.danger:hover { filter: brightness(1.08); }
 
+/* ---------- undo toast ---------- */
+/* Sits above the modal overlay's z-index so an undo offered right after a
+   confirm dialog closes (the common case: confirm -> delete -> toast) is
+   never hidden behind it during the overlay's own fade-out transition. */
+.undo-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 22px;
+  transform: translate(-50%, 12px);
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--ink);
+  color: var(--paper);
+  border-radius: 999px;
+  padding: 11px 10px 11px 18px;
+  box-shadow: 0 16px 36px -14px var(--card-shadow);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .18s ease, transform .18s ease;
+  max-width: calc(100vw - 32px);
+}
+.undo-toast.open { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+.undo-toast-msg { font-size: 13.5px; line-height: 1.3; }
+.undo-toast-btn {
+  flex-shrink: 0;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--paper);
+  background: none;
+  border: 1px solid color-mix(in srgb, var(--paper) 35%, transparent);
+  border-radius: 999px;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+.undo-toast-btn:hover { background: color-mix(in srgb, var(--paper) 14%, transparent); border-color: var(--paper); }
+@media (max-width: 480px) {
+  .undo-toast { left: 16px; right: 16px; transform: translateY(12px); }
+  .undo-toast.open { transform: translateY(0); }
+}
+
 /* ---------- welcome tour ---------- */
 /* Same hand-built-overlay approach as the modal above, for the same reason
    (no native dialogs in a sandboxed artifact iframe). Two pieces sit above
@@ -1255,7 +1327,7 @@ button { font-family: inherit; }
   font-size: 11px;
   letter-spacing: .04em;
   text-transform: uppercase;
-  color: var(--accent);
+  color: var(--accent-text);
   font-weight: 600;
   min-height: 14px;
 }

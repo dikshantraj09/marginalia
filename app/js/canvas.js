@@ -1,4 +1,5 @@
 import { rafThrottle } from './raf-throttle.js';
+import { showUndoToast } from './modal.js';
 
 // The freeform notes canvas: excerpt cards (with your own notes attached),
 // dragging, linking cards with threads, and click-to-jump back to the source page.
@@ -405,6 +406,21 @@ export default class NotesCanvas {
     el.style.left = c.x + 'px';
     el.style.top = c.y + 'px';
     el.dataset.id = c.id;
+    // Pulling an excerpt and linking two cards are still pointer/touch-only
+    // (marquee selection and the drag-to-link gesture both need a real
+    // pointer path of their own — a bigger, separately-scoped piece of
+    // work), but once a card exists it should be fully keyboard-operable:
+    // tabbable, with Enter to jump to its source page, Delete/Backspace to
+    // remove it, and "L" to link it to another card (see _wireCard's
+    // keydown handler and _startKeyboardLink below) — the two interactions
+    // that were previously reachable only by drag.
+    el.tabIndex = 0;
+    el.setAttribute('role', 'group');
+    el.setAttribute(
+      'aria-label',
+      'Excerpt from ' + (c.docName || 'PDF') + ', page ' + c.page +
+        '. Press Enter to jump to that page, L to link to another card, Delete to remove.'
+    );
 
     let quote;
     if (c.image) {
@@ -430,6 +446,7 @@ export default class NotesCanvas {
     note.className = 'card-note';
     note.contentEditable = 'true';
     note.dataset.placeholder = 'Add your thoughts…';
+    note.setAttribute('aria-label', 'Your note on this excerpt');
     note.textContent = c.note || '';
 
     const meta = document.createElement('div');
@@ -437,7 +454,10 @@ export default class NotesCanvas {
     const sourceLabel = (c.docName ? truncateName(c.docName) + ' · ' : '') + 'p.' + c.page;
     meta.innerHTML =
       '<span class="page-tag" title="' + escapeAttr(c.docName || '') + ', page ' + c.page + '">' + escapeAttr(sourceLabel) + '</span>' +
-      '<span class="card-actions"><span class="del" title="Remove">✕</span><span class="link-nub" title="Drag to link"></span></span>';
+      '<span class="card-actions">' +
+      '<span class="del" role="button" tabindex="0" title="Remove" aria-label="Remove this card">✕</span>' +
+      '<span class="link-nub" role="button" tabindex="0" title="Drag to link, or press L on the card to link by keyboard" aria-label="Link this card to another"></span>' +
+      '</span>';
 
     el.appendChild(quote);
     el.appendChild(note);
@@ -548,7 +568,67 @@ export default class NotesCanvas {
     // for the rest of the session (see the flag's own comment above).
     el.addEventListener('pointercancel', endDrag);
 
-    delBtn.addEventListener('click', () => this._removeCard(c));
+    // Same "will I lose my notes?" reasoning as the PDF/canvas delete undo
+    // in rail.js — a single card is a smaller loss than a whole document,
+    // but it's also one click/keypress with no confirm dialog at all
+    // (unlike those two), so it's if anything the easier one to trigger by
+    // accident. Snapshot the card and its links before removing them;
+    // _removeCard already drops both from `this.links`/DB, so undo just
+    // re-adds what was captured here. Shared by the ✕ button and the
+    // keyboard Delete/Backspace handler below.
+    const removeWithUndo = () => {
+      const linksSnapshot = this.links.filter((l) => l.a === c.id || l.b === c.id);
+      const cardSnapshot = { ...c };
+      this._removeCard(c);
+      showUndoToast(
+        'Card removed' + (linksSnapshot.length ? ' (and ' + linksSnapshot.length + ' link' + (linksSnapshot.length > 1 ? 's' : '') + ')' : '') + '.',
+        () => {
+          this.cards.push(cardSnapshot);
+          this._renderCard(cardSnapshot);
+          if (this.cb.onCardAdded) this.cb.onCardAdded(cardSnapshot);
+          linksSnapshot.forEach((l) => {
+            this.links.push(l);
+            if (this.cb.onLinkAdded) this.cb.onLinkAdded(l);
+          });
+          this._drawLinks();
+          this._updateEmptyState();
+        }
+      );
+    };
+    delBtn.addEventListener('click', removeWithUndo);
+    delBtn.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); removeWithUndo(); }
+    });
+
+    // Keyboard path for the two interactions that otherwise only exist as
+    // pointer drags: jumping to a card's source page (Enter, mirroring a
+    // click) and linking two cards (L on the source card, then Enter on the
+    // target — see _startKeyboardLink/_completeKeyboardLink). Guarded to
+    // the card element itself so it doesn't fire while typing in the note
+    // or activating the ✕/link-nub buttons, which have their own handlers.
+    el.addEventListener('keydown', (e) => {
+      if (e.target !== el) return;
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        if (this._keyboardLinkFrom && this._keyboardLinkFrom !== c.id) {
+          this._completeKeyboardLink(this._keyboardLinkFrom, c.id);
+        } else if (this.cb.onCardClick) {
+          this.cb.onCardClick(c);
+        }
+      } else if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
+        removeWithUndo();
+      } else if ((e.key === 'l' || e.key === 'L') && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        this._startKeyboardLink(c.id, el);
+      } else if (e.key === 'Escape' && this._keyboardLinkFrom) {
+        e.preventDefault();
+        this._cancelKeyboardLink();
+      }
+    });
+    nub.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); this._startKeyboardLink(c.id, el); }
+    });
 
     noteEl.addEventListener('input', () => {
       c.note = noteEl.textContent;
@@ -557,11 +637,77 @@ export default class NotesCanvas {
     });
   }
 
+  // ---------- keyboard linking (Tab/Shift+Tab to pick a target card, L to
+  // start, Enter to confirm, Escape to cancel) — the keyboard equivalent of
+  // dragging a thread from one card's link-nub to another in _startLink. ----------
+
+  _startKeyboardLink(cardId, el) {
+    this._cancelKeyboardLink();
+    this._keyboardLinkFrom = cardId;
+    el.classList.add('link-source');
+  }
+
+  _cancelKeyboardLink() {
+    if (!this._keyboardLinkFrom) return;
+    const fromEl = this.cardEls.get(this._keyboardLinkFrom);
+    if (fromEl) fromEl.classList.remove('link-source');
+    this._keyboardLinkFrom = null;
+  }
+
+  _completeKeyboardLink(fromId, toId) {
+    const fromEl = this.cardEls.get(fromId);
+    if (fromEl) fromEl.classList.remove('link-source');
+    this._keyboardLinkFrom = null;
+    const exists = this.links.some(
+      (l) => (l.a === fromId && l.b === toId) || (l.a === toId && l.b === fromId)
+    );
+    if (exists) return;
+    const newLink = {
+      id: 'lnk_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      a: fromId,
+      b: toId,
+      type: null,
+    };
+    this.links.push(newLink);
+    if (this.cb.onLinkAdded) this.cb.onLinkAdded(newLink);
+    this._drawLinks();
+    // Same "opens straight into the label picker" behavior as a
+    // pointer-made link (see _startLink's finish()) — anchored on the
+    // target card since there's no drop point/cursor position to anchor to
+    // here.
+    const toEl = this.cardEls.get(toId);
+    if (toEl) {
+      const r = toEl.getBoundingClientRect();
+      this._openLinkMenu(newLink, r.left + r.width / 2, r.top + r.height / 2);
+    }
+  }
+
   // Called after a source PDF is deleted elsewhere — drop any cards pulled
   // from it (their DB records are already gone; this just syncs the view).
   removeCardsByDoc(docId) {
     const toRemove = this.cards.filter((c) => c.docId === docId);
     toRemove.forEach((c) => this._removeCard(c, { alreadyPersisted: true }));
+  }
+
+  // The other half of removeCardsByDoc: called when an undo toast (see
+  // modal.js's showUndoToast) reverses a PDF or canvas delete whose cards
+  // belonged to the canvas currently on screen. Re-adds cards at their
+  // original position/id — DB.put with the same id already restored the
+  // record itself (the caller did that), so this only needs to put them
+  // back on screen without going through addExcerptCard's fresh-id and
+  // auto-position logic, which would treat a restore as a brand new card.
+  restoreCards(cards, links) {
+    cards.forEach((c) => {
+      if (this.cardEls.has(c.id)) return; // already on screen (e.g. never actually removed)
+      this.cards.push(c);
+      this._renderCard(c);
+    });
+    (links || []).forEach((l) => {
+      if (this.links.some((x) => x.id === l.id)) return;
+      this.links.push(l);
+    });
+    this._drawLinks();
+    this._updateEmptyState();
   }
 
   // Called after a source PDF is renamed elsewhere — keep the "p.N" labels
@@ -875,6 +1021,11 @@ export default class NotesCanvas {
       if (this.cb.onLinkRemoved) this.cb.onLinkRemoved(link.id);
       this._drawLinks();
       this._closeLinkMenu();
+      showUndoToast('Link deleted.', () => {
+        this.links.push(link);
+        if (this.cb.onLinkAdded) this.cb.onLinkAdded(link);
+        this._drawLinks();
+      });
     });
 
     // Any pointerdown outside the menu closes it without acting — capture
@@ -884,6 +1035,19 @@ export default class NotesCanvas {
     };
     // Skip the gesture that opened the menu itself.
     setTimeout(() => window.addEventListener('pointerdown', this._menuOutsideHandler, true), 0);
+
+    // Escape closes the menu without acting, same as clicking outside it —
+    // needed now that a link (and this menu) can be opened purely from the
+    // keyboard (see _completeKeyboardLink), where there's no outside click
+    // to fall back on. Capture phase so it beats any card-level Escape
+    // handler (e.g. cancelling an in-progress keyboard link) underneath.
+    menu.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); this._closeLinkMenu(); }
+    }, true);
+    // First preset button gets focus so a keyboard-made link lands straight
+    // in a tabbable control, same as a mouse user's first click target.
+    const firstBtn = menu.querySelector('.link-menu-type');
+    if (firstBtn) firstBtn.focus();
   }
 
   // ---------- export ----------

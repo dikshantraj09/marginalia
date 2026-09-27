@@ -16,9 +16,19 @@
   --canvas-dot: #DCD7C8;
   --ink: #221F1B;
   --ink-soft: #6B6459;
-  --ink-faint: #9C9585;
+  /* Darkened from #9C9585 to clear 4.5:1 against --paper/--card-bg (was
+     ~2.7:1) -- see impeccable critique 2026-09-27. Still reads as the
+     same muted secondary tone, just no longer failing AA as body text. */
+  --ink-faint: #6D685D;
   --rule: #DCD6C6;
   --accent: #C98A2E;
+  /* --accent itself is under 3:1 against --paper/--card-bg, fine for the
+     borders, dots and SVG strokes it's used for elsewhere but not for
+     text. --accent-text is the same hue darkened to clear 4.5:1 (AA body
+     text) against both, used wherever --accent was standing in as a text
+     color (see impeccable critique 2026-09-27) -- --accent itself is left
+     alone everywhere else so those non-text uses don't get muddier. */
+  --accent-text: #78521B;
   --accent-2: #3C6E68;
   --card-bg: #FFFDF7;
   --card-shadow: rgba(40, 32, 16, 0.14);
@@ -56,9 +66,13 @@ img { display: block; max-width: 100%; height: auto; }
   font-weight: 600;
   letter-spacing: 0.09em;
   text-transform: uppercase;
-  color: var(--accent);
+  color: var(--accent-text);
   margin: 0 0 14px;
 }
+/* On the dark .statement section --accent itself already clears 5.6:1
+   against --ink, so the inverse variant keeps the brighter, more on-brand
+   value rather than switching to --accent-text (tuned for light
+   backgrounds, not needed here). */
 .eyebrow-inverse { color: var(--accent); }
 
 /* ---------- scroll progress hairline ---------- */
@@ -118,7 +132,11 @@ img { display: block; max-width: 100%; height: auto; }
   color: var(--ink);
   letter-spacing: -0.01em;
 }
-.wordmark em { color: var(--accent); font-style: italic; }
+.wordmark em { color: var(--accent-text); font-style: italic; }
+/* Nav's dark state (see .nav.is-on-dark above) sits over --ink, where the
+   brighter --accent already clears contrast -- restore it there instead
+   of the light-background --accent-text. */
+.nav.is-on-dark .wordmark em { color: var(--accent); }
 
 .nav-cta {
   text-decoration: none;
@@ -328,7 +346,7 @@ img { display: block; max-width: 100%; height: auto; }
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.1em;
-  color: var(--accent);
+  color: var(--accent-text);
   display: block;
   margin-bottom: 12px;
 }
@@ -488,7 +506,7 @@ img { display: block; max-width: 100%; height: auto; }
   background: var(--card-bg);
   color: var(--ink);
 }
-.ai-file-md { border-color: var(--accent); color: var(--accent); }
+.ai-file-md { border-color: var(--accent); color: var(--accent-text); }
 .ai-op { color: var(--ink-faint); font-size: 20px; }
 /* keeps the arrow with its target when the row wraps on narrow screens */
 .ai-end { display: inline-flex; align-items: center; gap: inherit; }
@@ -540,7 +558,7 @@ img { display: block; max-width: 100%; height: auto; }
   border-top: 1px solid var(--rule);
 }
 .footer a { color: var(--ink-soft); text-decoration: none; }
-.footer a:hover { color: var(--accent); }
+.footer a:hover { color: var(--accent-text); }
 
 /* ---------- scroll reveal ---------- */
 

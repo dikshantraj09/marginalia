@@ -4,7 +4,7 @@
 // independently of each other.
 
 import DB from './db.js';
-import { showPrompt, showConfirm } from './modal.js';
+import { showPrompt, showConfirm, showUndoToast } from './modal.js';
 
 const DRAG_TYPE = { pdf: 'text/pdf-doc-id', note: 'text/note-canvas-id' };
 
@@ -262,15 +262,47 @@ export default class Rail {
 
   async _deleteDoc(d) {
     const cards = await DB.byIndex('cards', 'docId', d.id);
+    // Cards can live on canvases other than whichever one is open right
+    // now (a canvas can pull excerpts from several PDFs) — collect every
+    // link touching any of this doc's cards, across all of them, so
+    // deleting the doc doesn't leave orphaned links pointing at cards that
+    // no longer exist. Links only index by canvasId, so this fans out one
+    // lookup per distinct canvas the cards actually belong to.
+    const cardIds = new Set(cards.map((c) => c.id));
+    const canvasIds = new Set(cards.map((c) => c.canvasId).filter(Boolean));
+    const links = [];
+    for (const cvId of canvasIds) {
+      const cvLinks = await DB.byIndex('links', 'canvasId', cvId);
+      links.push(...cvLinks.filter((l) => cardIds.has(l.a) || cardIds.has(l.b)));
+    }
     const msg = cards.length
       ? 'Delete "' + d.name + '"? ' + cards.length + ' excerpt' + (cards.length > 1 ? 's' : '') + ' pulled from it will also be removed from your notes.'
       : 'Delete "' + d.name + '"?';
     if (!(await showConfirm(msg))) return;
+    for (const l of links) { await DB.delete('links', l.id); }
     for (const c of cards) { await DB.delete('cards', c.id); }
     await DB.delete('documents', d.id);
     this.documents = this.documents.filter((x) => x.id !== d.id);
     this.render();
     this.cb.onDocDeleted && this.cb.onDocDeleted(d.id, cards);
+    // Confirming the dialog above is otherwise the point of no return — a
+    // mis-click loses the PDF, every excerpt pulled from it, and every link
+    // touching those excerpts in one step, which is exactly the "will I
+    // lose my notes?" failure this product exists to prevent. Undo
+    // re-inserts the document, its cards and those links by their original
+    // ids (a plain DB.put, not fresh records) and asks whoever's watching
+    // one of the affected canvases right now to put things back on screen.
+    showUndoToast(
+      'Deleted "' + d.name + '"' + (cards.length ? ' and ' + cards.length + ' excerpt' + (cards.length > 1 ? 's' : '') : '') + '.',
+      async () => {
+        await DB.put('documents', d);
+        for (const c of cards) await DB.put('cards', c);
+        for (const l of links) await DB.put('links', l);
+        this.documents.push(d);
+        this.render();
+        this.cb.onDocRestored && this.cb.onDocRestored(d, cards, links);
+      }
+    );
   }
 
   async _deleteCanvas(c) {
@@ -286,6 +318,21 @@ export default class Rail {
     this.canvases = this.canvases.filter((x) => x.id !== c.id);
     this.render();
     this.cb.onCanvasDeleted && this.cb.onCanvasDeleted(c.id);
+    // Same reasoning as _deleteDoc's undo above. Deleting a canvas always
+    // closes it first (see onCanvasDeleted), so there's no live on-screen
+    // view to patch up here — restoring the DB rows and the rail listing is
+    // enough, since re-opening the canvas reads fresh from the DB anyway.
+    showUndoToast(
+      'Deleted "' + c.name + '"' + (cards.length ? ' (' + cards.length + ' card' + (cards.length > 1 ? 's' : '') + ')' : '') + '.',
+      async () => {
+        await DB.put('canvases', c);
+        for (const card of cards) await DB.put('cards', card);
+        for (const l of links) await DB.put('links', l);
+        this.canvases.push(c);
+        this.render();
+        this.cb.onCanvasRestored && this.cb.onCanvasRestored(c, cards, links);
+      }
+    );
   }
 
   async _createCanvas(folderId) {

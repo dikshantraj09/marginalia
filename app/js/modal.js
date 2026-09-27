@@ -78,3 +78,50 @@ export function showConfirm(message, okLabel) {
 export function showAlert(message, okLabel) {
   return openModal({ message, showInput: false, okLabel: okLabel || 'OK', danger: false });
 }
+
+// A brief bottom-of-screen toast offering to reverse the delete that was
+// just confirmed. Deleting a PDF, canvas, card or link is otherwise final
+// the moment the confirm dialog above is accepted — for a product whose
+// whole reason to exist is "never lose the link between a note and its
+// source," a mis-click on delete is exactly the failure mode that breaks
+// that promise, so every delete path gets one of these rather than relying
+// on the confirm dialog alone. `onUndo` does the actual restoring; this
+// file only owns the toast's lifecycle and unwinds cleanly if a second
+// delete happens (or the same one is triggered again) before the first
+// toast's timeout elapses.
+let toastEl = null;
+let toastTimer = null;
+
+export function showUndoToast(message, onUndo, { duration = 8000 } = {}) {
+  if (toastEl) {
+    clearTimeout(toastTimer);
+    toastEl.remove();
+    toastEl = null;
+  }
+  const el = document.createElement('div');
+  el.className = 'undo-toast';
+  el.setAttribute('role', 'status');
+  el.innerHTML =
+    '<span class="undo-toast-msg"></span>' +
+    '<button type="button" class="undo-toast-btn">Undo</button>';
+  el.querySelector('.undo-toast-msg').textContent = message;
+  document.body.appendChild(el);
+  toastEl = el;
+  // Added then immediately given its "open" class on the next frame, not in
+  // the same one, so the transition actually plays instead of the element
+  // just appearing already in its end state.
+  requestAnimationFrame(() => el.classList.add('open'));
+
+  function dismiss() {
+    if (toastEl !== el) return; // already replaced/dismissed
+    clearTimeout(toastTimer);
+    el.classList.remove('open');
+    setTimeout(() => el.remove(), 200);
+    toastEl = null;
+  }
+  el.querySelector('.undo-toast-btn').addEventListener('click', () => {
+    dismiss();
+    onUndo();
+  });
+  toastTimer = setTimeout(dismiss, duration);
+}
