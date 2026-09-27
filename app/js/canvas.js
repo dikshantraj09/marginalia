@@ -173,6 +173,7 @@ export default class NotesCanvas {
     let pinchIds = null; // the two pointerIds the active pinch is measured from
     let pinchStartDist = 0, pinchStartZoom = 1, pinchStartMid = null, pinchStartPan = null;
     let pinchStartOrigin = null; // canvasEl's own screen rect, captured once per pinch (see beginPinch)
+    let pinchRAF = null; // rAF handle for a pending, not-yet-applied pinch update, or null — see onMove
 
     const twoPoints = () => pinchIds.map((id) => pointers.get(id));
     const midpoint = (pts) => ({ x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 });
@@ -228,26 +229,40 @@ export default class NotesCanvas {
 
       if (mode === 'pinch') {
         e.preventDefault();
-        const pts = twoPoints();
-        const dist = distance(pts) || 1;
-        const mid = midpoint(pts);
-        // Anchor the pinch to the world point that was under the fingers
-        // when the gesture started, so the content under them stays under
-        // them as they spread/pinch — the same math as the PDF pane's own
-        // pinch-zoom (see pdfview.js), adapted to this canvas's
-        // translate-then-zoom layering (see the comment on setZoom above):
-        // a local (pre-zoom) point L maps to screen as origin + zoom*L, and
-        // a card's local position is pan + card.xy, so solving for the pan
-        // that keeps the same local point under the (possibly also
-        // dragged) new midpoint gives pan' = (mid-origin)/zoom' - worldXY.
-        const origin = pinchStartOrigin;
-        const worldX = (pinchStartMid.x - origin.x) / pinchStartZoom - pinchStartPan.x;
-        const worldY = (pinchStartMid.y - origin.y) / pinchStartZoom - pinchStartPan.y;
-        const newZoom = this.setZoom(pinchStartZoom * (dist / pinchStartDist));
-        this._setPan(
-          (mid.x - origin.x) / newZoom - worldX,
-          (mid.y - origin.y) / newZoom - worldY
-        );
+        // setZoom applies CSS `zoom`, which is layout-affecting — on a
+        // canvas with many cards, running the full pinch math (setZoom +
+        // _setPan, each forcing layout) once per touchmove event rather
+        // than once per animation frame is what makes the gesture stutter,
+        // same root cause as the PDF pane's pinch-zoom (see the matching
+        // comment in pdfview.js's _onPointerMove). Coalesce to one update
+        // per frame, reading whatever the latest two finger positions are
+        // by the time the frame runs.
+        if (pinchRAF === null) {
+          pinchRAF = requestAnimationFrame(() => {
+            pinchRAF = null;
+            if (mode !== 'pinch') return;
+            const pts = twoPoints();
+            const dist = distance(pts) || 1;
+            const mid = midpoint(pts);
+            // Anchor the pinch to the world point that was under the fingers
+            // when the gesture started, so the content under them stays under
+            // them as they spread/pinch — the same math as the PDF pane's own
+            // pinch-zoom (see pdfview.js), adapted to this canvas's
+            // translate-then-zoom layering (see the comment on setZoom above):
+            // a local (pre-zoom) point L maps to screen as origin + zoom*L, and
+            // a card's local position is pan + card.xy, so solving for the pan
+            // that keeps the same local point under the (possibly also
+            // dragged) new midpoint gives pan' = (mid-origin)/zoom' - worldXY.
+            const origin = pinchStartOrigin;
+            const worldX = (pinchStartMid.x - origin.x) / pinchStartZoom - pinchStartPan.x;
+            const worldY = (pinchStartMid.y - origin.y) / pinchStartZoom - pinchStartPan.y;
+            const newZoom = this.setZoom(pinchStartZoom * (dist / pinchStartDist));
+            this._setPan(
+              (mid.x - origin.x) / newZoom - worldX,
+              (mid.y - origin.y) / newZoom - worldY
+            );
+          });
+        }
       } else if (mode === 'pan') {
         // Screen-px deltas, converted to the pan transform's local (pre-zoom)
         // px so the content tracks the cursor 1:1 at any zoom level.
@@ -266,6 +281,7 @@ export default class NotesCanvas {
         // pointerdown to do anything again.
         mode = null;
         pinchIds = null;
+        if (pinchRAF !== null) { cancelAnimationFrame(pinchRAF); pinchRAF = null; }
       } else if (mode === 'pan' && pointers.size === 0) {
         mode = null;
       }
@@ -377,6 +393,28 @@ export default class NotesCanvas {
 
   _wireCard(el, c, noteEl, nub, delBtn) {
     let dragging = false, moved = false, startX, startY, origX, origY;
+    // Redrawing every link thread on every raw pointermove (_drawLinks
+    // wipes and rebuilds the whole SVG group, and _edgePoint reads
+    // el.offsetHeight per linked card, forcing layout) is more reflow work
+    // than a touchmove stream can keep up with on a big canvas — the
+    // symptom is the thread visibly lagging behind the card, or snapping
+    // into place only once the drag ends, which reads as the arrow "not
+    // correctly connecting" while dragging far. Coalescing to one redraw
+    // per animation frame, same fix as the pinch-zoom handlers above, keeps
+    // the card position updates (cheap: a style write, no layout read)
+    // immediate while capping the expensive part to what the screen can
+    // actually show.
+    let linkRAF = null;
+    const scheduleLinkRedraw = () => {
+      if (linkRAF !== null) return;
+      linkRAF = requestAnimationFrame(() => {
+        linkRAF = null;
+        this._drawLinks();
+      });
+    };
+    const cancelLinkRedraw = () => {
+      if (linkRAF !== null) { cancelAnimationFrame(linkRAF); linkRAF = null; }
+    };
 
     el.addEventListener('pointerdown', (e) => {
       if (e.target === nub) {
@@ -415,9 +453,16 @@ export default class NotesCanvas {
       c.y = origY + dy;
       el.style.left = c.x + 'px';
       el.style.top = c.y + 'px';
-      this._drawLinks();
+      scheduleLinkRedraw();
     });
     const endDrag = () => {
+      if (dragging && moved) {
+        // Finish with one synchronous redraw at the card's final position —
+        // otherwise a coalesced-away in-flight frame could leave the
+        // thread one step behind where the card actually stopped.
+        cancelLinkRedraw();
+        this._drawLinks();
+      }
       if (dragging && !moved) {
         if (this.cb.onCardClick) this.cb.onCardClick(c);
       }

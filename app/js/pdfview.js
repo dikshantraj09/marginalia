@@ -65,6 +65,7 @@ export default class PdfView {
     this._drag = null; // active marquee gesture state, or null
     this._pointers = new Map(); // pointerId -> last known {x, y}, for every finger currently down
     this._pinch = null; // active two-finger pinch-zoom gesture state, or null
+    this._pinchRAF = null; // rAF handle for a pending, not-yet-applied pinch update, or null
     this.container.addEventListener('pointerdown', (e) => this._onPointerDown(e));
     this.container.addEventListener('pointermove', (e) => this._onPointerMove(e), { passive: false });
     window.addEventListener('pointerup', (e) => this._onPointerUp(e));
@@ -103,6 +104,7 @@ export default class PdfView {
     this._lazyObserver.disconnect();
     this._cancelDrag();
     this._pinch = null;
+    if (this._pinchRAF !== null) { cancelAnimationFrame(this._pinchRAF); this._pinchRAF = null; }
     this._pointers.clear();
     this._textCache.clear();
     this._searchToken++;
@@ -613,7 +615,23 @@ export default class PdfView {
 
     if (this._pinch) {
       e.preventDefault();
-      this._updatePinch();
+      // Touch can deliver several pointermove events per animation frame,
+      // and each pinch update sets CSS `zoom` on the whole page container —
+      // a layout-affecting property that forces a full reflow of every
+      // rendered page, not just a compositor-only repaint. Applying that on
+      // every single event (rather than once per frame) is what made
+      // pinch-zooming a large, many-page PDF visibly stutter: the browser
+      // was doing several full-document reflows per frame instead of one.
+      // Coalescing to one _updatePinch() per frame, using the latest finger
+      // positions by the time the frame actually runs, keeps the visual
+      // result identical while cutting the reflow rate to what the screen
+      // can actually display.
+      if (this._pinchRAF === null) {
+        this._pinchRAF = requestAnimationFrame(() => {
+          this._pinchRAF = null;
+          if (this._pinch) this._updatePinch();
+        });
+      }
       return;
     }
 
@@ -680,7 +698,10 @@ export default class PdfView {
       // Lifting one finger ends the pinch rather than snapping into a
       // one-finger drag from that finger's unrelated starting point — the
       // remaining finger just needs a fresh pointerdown to do anything.
-      if (this._pointers.size < 2) this._pinch = null;
+      if (this._pointers.size < 2) {
+        this._pinch = null;
+        if (this._pinchRAF !== null) { cancelAnimationFrame(this._pinchRAF); this._pinchRAF = null; }
+      }
       return;
     }
 

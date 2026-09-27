@@ -390,6 +390,12 @@ button { font-family: inherit; }
   background: var(--rule);
   cursor: col-resize;
   z-index: 3;
+  /* Without this, a touch drag over the handle defaults to touch-action:
+     auto, so the browser is free to read it as a native pan/scroll gesture
+     before wirePaneResize's own pointer handlers (app.js) get a clean
+     stream — the drag never starts, or stutters and drops. Same reasoning
+     as .pdf-page-wrap and .card, which hit the identical issue. */
+  touch-action: none;
 }
 .pane-resize::before {
   content: '';
