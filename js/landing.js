@@ -1,4 +1,12 @@
 (function () {
+  // Flips .reveal-up from "hidden until JS proves it ran" to "visible
+  // unless JS proves it's running" -- see the .reveal-up comment in
+  // landing.css. This runs synchronously, first, before anything else in
+  // this file, so the window where content could be invisible is as small
+  // as this script's own parse+exec time, not a scroll-triggered observer
+  // callback that may never fire for a given viewport/capture.
+  document.documentElement.classList.add('js-reveal');
+
   var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   // ---------- scroll-linked chrome: progress hairline + nav material ----------

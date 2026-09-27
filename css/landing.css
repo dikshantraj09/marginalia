@@ -544,15 +544,21 @@ img { display: block; max-width: 100%; height: auto; }
 
 /* ---------- scroll reveal ---------- */
 
+/* Visible by default -- the hidden/offset starting state only applies once
+   `js-reveal` is on <html>, which landing.js adds itself the moment it
+   confirms it's actually running (see the top of that file). This makes
+   the reveal an enhancement JS opts INTO rather than a state JS has to
+   opt OUT of: no script, a slow/blocked script, or a script racing a
+   capture tool all fall back to fully visible content instead of a
+   permanently hidden one. The privacy statement and closing CTA don't
+   carry this class in index.html at all -- see the comment there. */
 .reveal-up {
-  opacity: 0;
-  transform: translateY(22px);
   transition: opacity 0.7s var(--ease-out), transform 0.7s var(--ease-out);
 }
-.reveal-up.is-visible {
-  opacity: 1;
-  transform: translateY(0);
+.js-reveal .reveal-up:not(.is-visible) {
+  opacity: 0;
+  transform: translateY(22px);
 }
 @media (prefers-reduced-motion: reduce) {
-  .reveal-up { opacity: 1; transform: none; transition: none; }
+  .js-reveal .reveal-up:not(.is-visible) { opacity: 1; transform: none; transition: none; }
 }

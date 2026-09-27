@@ -115,17 +115,25 @@
     </div>
   </section>
 
+  <!-- Deliberately NOT .reveal-up: this is the page's single highest-stakes
+       trust moment (see the .reveal-up comment in landing.css), so it must
+       never depend on a scroll-triggered animation to become legible. -->
   <section class="statement">
     <div class="statement-glow" aria-hidden="true"></div>
-    <div class="statement-inner reveal-up">
+    <div class="statement-inner">
       <p class="eyebrow eyebrow-inverse">No account. No upload.</p>
       <h2>Everything stays on your device.</h2>
-      <p>Your PDFs and notes are stored in your browser, not on a server. Nothing is uploaded, and there is nothing to sign up for.</p>
+      <p>Your PDFs and notes are stored in your browser's IndexedDB, not on a server. Nothing is uploaded, there's nothing to sign up for, and the code is <a href="https://github.com/dikshantraj09/marginalia">open source</a>, so you can check for yourself.</p>
     </div>
   </section>
 
+  <!-- .ai-inner deliberately NOT .reveal-up either -- same reasoning as the
+       .statement-inner comment above: real, substantive page content (what
+       the export actually does and why) shouldn't be gated on a
+       scroll-triggered animation that a slow or blocked script can leave
+       permanently unrun. See the .reveal-up comment in landing.css. -->
   <section class="section ai-ready" id="ai-ready">
-    <div class="ai-inner reveal-up">
+    <div class="ai-inner">
       <p class="eyebrow">Export</p>
       <h2>Your notes, ready for your AI.</h2>
       <p class="ai-sub">Export a canvas as one Markdown file: every excerpt, the page it came from, your own notes, and how each one connects. Give it to ChatGPT or Claude along with the PDF, and it reads your thinking as well as the source.</p>
@@ -143,9 +151,11 @@
     </div>
   </section>
 
+  <!-- Also deliberately NOT .reveal-up: the closing conversion ask should
+       never be gated on animation timing either. -->
   <section class="section closing">
-    <div class="closing-inner reveal-up">
-      <h2>Start pulling excerpts.</h2>
+    <div class="closing-inner">
+      <h2>Every excerpt remembers its page. Yours can too.</h2>
       <a class="btn-primary" href="app/">Open the app</a>
       <p class="closing-note">Free and open source (MIT). <a href="https://github.com/dikshantraj09/marginalia">View the code on GitHub</a>.</p>
     </div>
