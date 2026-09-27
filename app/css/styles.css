@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,500&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,500&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=IBM+Plex+Sans:wght@400;500;600&family=Cookie&display=swap');
 
 :root {
   --paper: #F7F4EC;
@@ -326,12 +326,12 @@ button { font-family: inherit; }
   align-items: center;
   gap: 5px;
   margin: 6px 9px 12px;
-  padding: 6px 11px;
-  border-radius: 999px;
+  padding: 3px 12px 4px 9px;
+  border: 1px solid #000;
+  border-radius: 9px;
   background: #FFDD00;
-  color: #1c1a17;
-  font-size: 11.5px;
-  font-weight: 600;
+  color: #000;
+  font: 400 19px/1.2 'Cookie', 'Brush Script MT', cursive;
   text-decoration: none;
 }
 .rail-support:hover { filter: brightness(0.96); }

@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,680;1,9..144,500&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,680;1,9..144,500&family=IBM+Plex+Sans:wght@400;500;600&family=Cookie&display=swap');
 
 /* Landing page always renders this one warm-paper palette, matching the
    brand across the promo video and marketing assets -- it does NOT follow
@@ -542,20 +542,24 @@ img { display: block; max-width: 100%; height: auto; }
 .closing h2 { max-width: none; margin: 0 auto; }
 .closing .btn-primary { margin-top: 28px; }
 .closing-note { margin-top: 18px; font-size: 14px; color: var(--ink-faint); }
+/* Same look as Buy Me a Coffee's official button (yellow, black outline,
+   "Cookie" script type) without loading their third-party script. */
 .btn-coffee {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   margin-top: 22px;
-  padding: 11px 20px;
-  border-radius: 999px;
+  padding: 6px 22px 7px 18px;
+  border: 1px solid #000;
+  border-radius: 12px;
   background: #FFDD00;
-  color: #1c1a17;
-  font: 600 15px/1 'IBM Plex Sans', -apple-system, sans-serif;
+  color: #000;
+  font: 400 28px/1.2 'Cookie', 'Brush Script MT', cursive;
   text-decoration: none;
   box-shadow: 0 8px 20px -12px rgba(40, 32, 16, 0.5);
   transition: transform 0.2s var(--ease-out), box-shadow 0.2s var(--ease-out);
 }
+.btn-coffee span { font-size: 22px; }
 .btn-coffee:hover { transform: translateY(-2px); box-shadow: 0 14px 26px -12px rgba(40, 32, 16, 0.55); }
 .btn-coffee:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
 .coffee-note { margin-top: 10px; font-size: 13px; color: var(--ink-faint); }
