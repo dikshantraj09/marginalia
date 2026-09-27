@@ -321,20 +321,23 @@ button { font-family: inherit; }
   margin-bottom: 6px;
 }
 .rail-storage-top svg { flex-shrink: 0; opacity: 0.7; }
+/* Deliberately quiet: the app is for reading, so this is a small muted
+   link rather than a button. It only picks up the Buy Me a Coffee yellow
+   on hover/focus. The loud yellow button lives on the landing page. */
 .rail-support {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  margin: 6px 9px 12px;
-  padding: 3px 12px 4px 9px;
-  border: 1px solid #000;
-  border-radius: 9px;
-  background: #FFDD00;
-  color: #000;
-  font: 400 19px/1.2 'Cookie', 'Brush Script MT', cursive;
+  margin: 4px 9px 12px;
+  padding: 3px 7px;
+  border-radius: 6px;
+  font-size: 11px;
+  color: var(--ink-faint);
   text-decoration: none;
+  transition: background .15s ease, color .15s ease;
 }
-.rail-support:hover { filter: brightness(0.96); }
+.rail-support:hover,
+.rail-support:focus-visible { background: #FFDD00; color: #000; }
 .rail-storage-bar {
   height: 3px;
   border-radius: 999px;
