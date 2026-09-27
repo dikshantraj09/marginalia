@@ -634,6 +634,18 @@ button { font-family: inherit; }
   font-size: 13px;
   cursor: pointer;
 }
+/* The only other place this claim shows up is a tooltip on .rail-storage
+   (hover/long-press only, and hidden entirely until a folder exists) and a
+   welcome-tour step that plays once, ever. This is the one copy of it that
+   is always on screen from a person's very first moment in the app, before
+   they've imported anything — so unlike the button above, it needs to read
+   as normal body text, not `--ink-faint`'s decorative/secondary tone. */
+.reading-empty-trust {
+  margin-top: 4px;
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  max-width: 320px;
+}
 
 .pdf-page-wrap {
   max-width: 640px;
