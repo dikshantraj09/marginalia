@@ -1,5 +1,6 @@
 node_modules/
 .DS_Store
+.impeccable/
 sample*.pdf
 table-sample.pdf
 outline-sample.pdf
