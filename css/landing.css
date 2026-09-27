@@ -558,6 +558,7 @@ img { display: block; max-width: 100%; height: auto; }
   border-top: 1px solid var(--rule);
 }
 .footer a { color: var(--ink-soft); text-decoration: none; }
+.footer-links { display: flex; flex-wrap: wrap; gap: 8px 20px; justify-content: flex-end; }
 .footer a:hover { color: var(--accent-text); }
 
 /* ---------- scroll reveal ---------- */
