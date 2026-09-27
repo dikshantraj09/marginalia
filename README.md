@@ -30,6 +30,11 @@ file to ChatGPT, Claude or any other assistant together with the source PDF
 and ask it to summarize your argument, find where your notes disagree, or
 quiz you.
 
+**Copy for AI** (next to the export button) skips the file: it puts the same
+map on your clipboard with a ready-made prompt in front, ready to paste into
+a chat. Image excerpts are embedded in the downloaded file and referenced by
+page in the copied version.
+
 ## Running it
 
 This is a static site (no backend, no build step) — but it uses ES modules,

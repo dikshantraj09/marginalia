@@ -833,6 +833,24 @@ button { font-family: inherit; }
   cursor: pointer;
 }
 .canvas-export:hover { color: var(--ink); border-color: var(--ink-faint); }
+.canvas-copy-ai {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 9px;
+  border: 1px solid var(--rule);
+  background: none;
+  border-radius: 6px;
+  color: var(--ink-soft);
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.canvas-copy-ai:hover { color: var(--ink); border-color: var(--ink-faint); }
+.canvas-copy-ai.is-done { color: var(--accent); border-color: var(--accent); }
 
 /* Slim tab that reopens the notes panel once it's collapsed — lives
    outside .canvas-wrap so it stays visible while that panel is hidden. */

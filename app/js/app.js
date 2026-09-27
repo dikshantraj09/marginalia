@@ -51,6 +51,7 @@ const bodyRowEl = document.getElementById('bodyRow');
 const canvasWrapEl = document.getElementById('canvasWrap');
 const canvasCollapseBtn = document.getElementById('canvasCollapseBtn');
 const canvasExportBtn = document.getElementById('canvasExportBtn');
+const canvasCopyAiBtn = document.getElementById('canvasCopyAiBtn');
 const canvasZoomOutBtn = document.getElementById('canvasZoomOut');
 const canvasZoomInBtn = document.getElementById('canvasZoomIn');
 const canvasZoomLevelEl = document.getElementById('canvasZoomLevel');
@@ -503,6 +504,56 @@ canvasExportBtn.addEventListener('click', () => {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 });
 
+// -------- copy for AI --------
+// One click from canvas to chat: the same Markdown as the export, with a
+// short prompt in front telling the model what it's looking at. Image
+// excerpts become page pointers instead of inline base64, which would
+// swamp a chat box.
+
+const AI_PROMPT =
+  "Below are my reading notes from Marginalia, as Markdown. Each card (C1, C2, …) is an " +
+  "excerpt I pulled from a PDF, with the page it came from and my own note on it. Links " +
+  "show how I think the excerpts relate (supports, contradicts, references…). If I've " +
+  "attached the PDF, treat it as the source and these notes as my reading of it.\n\n" +
+  "First, summarise my argument in a few bullets. Then point out gaps, weak links or " +
+  "contradictions between my notes, citing card numbers and pages. I'll ask follow-up " +
+  "questions after that.";
+
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch (e) {
+    // Older browsers / insecure contexts: fall back to a hidden textarea.
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (_) { ok = false; }
+    ta.remove();
+    return ok;
+  }
+}
+
+let copyAiResetTimer = null;
+canvasCopyAiBtn.addEventListener('click', async () => {
+  if (!currentCanvasId) return;
+  const md = canvas.getLinkMapMarkdown(canvasTitleEl.textContent, { images: 'placeholder' });
+  const ok = await copyText(AI_PROMPT + '\n\n---\n\n' + md);
+  const label = canvasCopyAiBtn.querySelector('.canvas-copy-ai-label');
+  label.textContent = ok ? 'Copied' : 'Copy failed';
+  canvasCopyAiBtn.classList.toggle('is-done', ok);
+  clearTimeout(copyAiResetTimer);
+  copyAiResetTimer = setTimeout(() => {
+    label.textContent = 'Copy for AI';
+    canvasCopyAiBtn.classList.remove('is-done');
+  }, 1800);
+});
+
 // -------- download the open PDF --------
 
 downloadPdfBtn.addEventListener('click', async () => {
@@ -805,9 +856,9 @@ const tour = new Tour([
     before: () => { tourRestoreNotes = tourHoldNotesOpen(); },
   },
   {
-    target: 'canvasExportBtn',
-    title: 'Export your notes',
-    body: 'Export the whole linked note map — excerpts, pages, your notes and links — as Markdown. Handy for study notes, or hand it to an AI along with the PDF.',
+    target: 'canvasCopyAiBtn',
+    title: 'Take your notes to your AI',
+    body: 'Copy for AI puts your whole note map (excerpts, pages, your notes and links) plus a ready-made prompt on your clipboard. Paste it into ChatGPT or Claude with the PDF. The download button next to it saves the same map as a Markdown file, images included.',
     after: () => { if (tourRestoreNotes) { tourRestoreNotes(); tourRestoreNotes = null; } },
   },
   {

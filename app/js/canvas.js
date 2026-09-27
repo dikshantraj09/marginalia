@@ -316,7 +316,9 @@ export default class NotesCanvas {
       rects,
       // Scanned/image-only pages have no extractable text — the marquee
       // still captures a snapshot of that region so the excerpt isn't lost.
-      excerpt: text ? (text.length > 220 ? text.slice(0, 220) + '…' : text) : '',
+      // Stored in full: the card's quote box caps its own height and
+      // scrolls, and the Markdown export needs the whole passage.
+      excerpt: text || '',
       image: image || null,
       note: '',
       x: pos.x,
@@ -809,7 +811,12 @@ export default class NotesCanvas {
   // source page and the reader's own note, plus its links in BOTH
   // directions — so a card that is only ever linked *to* still shows its
   // note. A flat "Connections" list at the end restates the whole graph.
-  getLinkMapMarkdown(title) {
+  //
+  // Image excerpts are embedded as data-URI images by default, so the
+  // downloaded file is self-contained. `images: 'placeholder'` swaps them
+  // for a one-line pointer to the page instead — used by "Copy for AI",
+  // where megabytes of base64 pasted into a chat box would just be noise.
+  getLinkMapMarkdown(title, { images = 'embed' } = {}) {
     const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
     const ids = new Map(this.cards.map((c, i) => [c.id, 'C' + (i + 1)]));
     const source = (c) => (c.docName ? c.docName + ', ' : '') + 'p.' + c.page;
@@ -840,7 +847,17 @@ export default class NotesCanvas {
       const id = ids.get(c.id);
       lines.push('### ' + id + ' · ' + source(c), '');
       const excerpt = clean(c.excerpt);
-      lines.push(excerpt ? '> ' + excerpt : '> _[image excerpt, no extractable text]_', '');
+      if (excerpt) lines.push('> ' + excerpt, '');
+      if (c.image) {
+        lines.push(
+          images === 'embed'
+            ? '![Image excerpt from ' + source(c) + '](' + c.image + ')'
+            : '> _[Image excerpt: see ' + source(c) + ' in the PDF]_',
+          ''
+        );
+      } else if (!excerpt) {
+        lines.push('> _[empty excerpt]_', '');
+      }
       const note = (c.note || '').trim();
       if (note) {
         lines.push('**Note:** ' + note.split(/\n+/).map((s) => s.trim()).filter(Boolean).join(' / '), '');
