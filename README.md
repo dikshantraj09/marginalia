@@ -3,6 +3,8 @@
 **[Try it →](https://marginalianotes.app/)** · free, no
 account, nothing uploaded · MIT licensed
 
+📝 The story behind it: [I built a PDF reader where every note remembers its page](https://dikshantraj09.hashnode.dev/i-built-a-pdf-reader-where-every-note-remembers-its-page)
+
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-%E2%98%95-FFDD00?style=flat&labelColor=222)](https://buymeacoffee.com/dikshantraj09)
 [![GitHub stars](https://img.shields.io/github/stars/dikshantraj09/marginalia?style=flat&label=Star&color=C98A2E)](https://github.com/dikshantraj09/marginalia)
 
