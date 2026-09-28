@@ -602,3 +602,8 @@ img { display: block; max-width: 100%; height: auto; }
 @media (prefers-reduced-motion: reduce) {
   .js-reveal .reveal-up:not(.is-visible) { opacity: 1; transform: none; transition: none; }
 }
+
+/* Product Hunt launch badge under the hero buttons */
+.ph-badge { display: inline-block; margin-top: 22px; line-height: 0; border-radius: 10px; overflow: hidden; font-size: 12px; color: var(--ink-faint, #8a8174); transition: transform .15s ease; }
+.ph-badge:hover, .ph-badge:focus-visible { transform: translateY(-2px); }
+.ph-badge img { width: 250px; height: 54px; }

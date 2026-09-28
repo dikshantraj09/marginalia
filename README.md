@@ -6,6 +6,8 @@ account, nothing uploaded · MIT licensed
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-%E2%98%95-FFDD00?style=flat&labelColor=222)](https://buymeacoffee.com/dikshantraj09)
 [![GitHub stars](https://img.shields.io/github/stars/dikshantraj09/marginalia?style=flat&label=Star&color=C98A2E)](https://github.com/dikshantraj09/marginalia)
 
+<a href="https://www.producthunt.com/products/marginalia-3?embed=true&utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-marginalia-3" target="_blank" rel="noopener noreferrer"><img alt="Marginalia - PDF notes that remember their page, and hand off to your AI | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1262782&theme=light&t=1790588230356"></a>
+
 ![Marginalia: a PDF open beside a notes canvas with linked excerpt cards](images/hero.webp)
 
 A PDF reader with a freeform notes canvas next to it. Pull excerpts out of
