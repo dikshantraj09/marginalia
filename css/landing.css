@@ -736,8 +736,20 @@ img { display: block; max-width: 100%; height: auto; }
 @keyframes caret { 50% { opacity: 0; } }
 
 @media (max-width: 860px) {
+  /* Phones get the message first and a cropped, zoomed clip right under
+     it (hero-demo-mobile.*, picked by landing.js), instead of the whole
+     desktop app shrunk to phone width above the headline. */
+  .hero { padding-bottom: 40px; gap: 28px; }
+  .hero-art { order: 0; }
   .hero-art-3d { animation-name: fade-rise; }
+  .hero-video { aspect-ratio: 930 / 840; }
   .live-chip { left: 10px; bottom: 10px; font-size: 11.5px; }
+}
+@media (max-width: 560px) {
+  .hero-actions { flex-direction: column; align-items: stretch; gap: 12px; }
+  .hero-actions .btn-primary, .hero-actions .btn-secondary { text-align: center; }
+  .hero-actions .btn-ghost { justify-content: center; padding: 6px 0; }
+  .ph-badge { display: block; width: fit-content; margin: 20px auto 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {

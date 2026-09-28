@@ -150,6 +150,14 @@
   }
   // ---------- hero clip: load after the page, pause when off-screen ----------
   var heroVideo = document.getElementById('heroVideo');
+  // Phones get a cropped clip that follows the action (and its matching
+  // poster, swapped in straight away so the first paint already fits).
+  var phoneClip = heroVideo && window.matchMedia('(max-width: 860px)').matches;
+  if (phoneClip) {
+    heroVideo.setAttribute('poster', heroVideo.dataset.posterMobile);
+    heroVideo.dataset.src = heroVideo.dataset.srcMobile;
+    heroVideo.dataset.srcWebm = heroVideo.dataset.srcMobileWebm;
+  }
   if (heroVideo && !reduceMotion) {
     var startVideo = function () {
       if (heroVideo.getAttribute('src')) return;
