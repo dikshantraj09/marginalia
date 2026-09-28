@@ -47,17 +47,26 @@
     <div class="hero-glow" aria-hidden="true"></div>
     <div class="hero-copy reveal-up">
       <p class="eyebrow">A PDF reader that remembers</p>
-      <h1>Every excerpt<br>remembers<br>its page.</h1>
+      <h1 class="kinetic"><span class="w" style="--i:0">Every</span> <span class="w" style="--i:1">excerpt</span><br><span class="w" style="--i:2">remembers</span><br><span class="w" style="--i:3">its</span> <span class="w" style="--i:4">page.</span></h1>
       <p class="hero-sub">Pull passages from any PDF, link the ones that relate, and click a note to jump straight back to its page.</p>
       <div class="hero-actions">
         <a class="btn-primary" href="app/">Open the app</a>
-        <a class="btn-ghost" href="#how-it-works">See how it works <span class="chev">↓</span></a>
+        <a class="btn-secondary" href="app/?sample=1">Try it with a sample PDF</a>
+        <a class="btn-ghost" href="#how-it-works">How it works <span class="chev">↓</span></a>
       </div>
       <a class="ph-badge" href="https://www.producthunt.com/products/marginalia-3?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-marginalia-3" target="_blank" rel="noopener noreferrer"><img alt="Marginalia - PDF notes that remember their page, and hand off to your AI | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1262782&amp;theme=light&amp;t=1790588230356"></a>
     </div>
     <div class="hero-art">
       <div class="hero-art-frame" id="heroArtFrame">
-        <img src="images/hero.webp" width="1680" height="1050" alt="Marginalia showing a PDF open beside a notes canvas with three linked excerpt cards" />
+        <div class="hero-art-3d">
+          <!-- The real app, recorded: drag over a passage, it lands on the
+               canvas as a card, two cards get linked, and a click jumps back
+               to the page. src is attached by landing.js after load (and not
+               at all under reduced motion), so the poster is what paints
+               first and the clip never competes with the page for bandwidth. -->
+          <video class="hero-video" id="heroVideo" width="1680" height="1050" muted loop playsinline preload="none" poster="images/hero-demo-poster.webp" data-src="images/hero-demo.mp4" data-src-webm="images/hero-demo.webm" aria-label="Marginalia in use: a passage is dragged from a PDF onto the notes canvas as a card, two cards are linked, and clicking a card jumps back to its page"></video>
+          <span class="live-chip" aria-hidden="true"><span class="live-dot"></span>The real app</span>
+        </div>
       </div>
     </div>
   </section>
@@ -111,15 +120,15 @@
          scrollytelling above is disabled (see the max-width media query in
          landing.css) -- same three beats, plain stacked rows. -->
     <div class="feature-fallback">
-      <div class="row reveal-up">
+      <div class="row reveal-up reveal-3d">
         <div class="row-image"><img src="images/reading.webp" width="1312" height="1040" alt="Two passages highlighted in a PDF, ready to be pulled onto the notes canvas" /></div>
         <div class="row-text"><span class="step-num">01</span><h3>Pull a passage, not just a highlight</h3><p>Drag a marquee over any line, even on a scanned page with no selectable text, and it lands on your notes canvas as its own card.</p></div>
       </div>
-      <div class="row reveal-up">
+      <div class="row reveal-up reveal-3d">
         <div class="row-image"><img src="images/linking.webp" width="1364" height="898" alt="Two note cards connected by a labeled, arrowed thread reading Supports" /></div>
         <div class="row-text"><span class="step-num">02</span><h3>Link what relates, and say how</h3><p>Drag between two cards to connect them, then label the thread: supports, contradicts, references, or your own word. Reverse or delete it any time.</p></div>
       </div>
-      <div class="row reveal-up">
+      <div class="row reveal-up reveal-3d">
         <div class="row-image">
           <div class="jump-diagram" aria-hidden="true">
             <span class="jump-card">Note</span>
@@ -159,6 +168,17 @@
         <span class="ai-op" aria-hidden="true">+</span>
         <span class="ai-file">source.pdf</span>
         <span class="ai-end"><span class="ai-op" aria-hidden="true">→</span><span class="ai-file">your AI</span></span>
+      </div>
+      <div class="md-window" id="mdWindow">
+        <div class="md-bar"><span></span><span></span><span></span><em>link-map.md</em></div>
+        <pre class="md-body" id="mdBody"><span class="md-h"># My notes</span>
+<span class="md-h">### C1 · On-Reading-Slowly.pdf, p.1</span>
+<span class="md-q">&gt; A reader with a stack of index cards could lay out an argument spatially…</span>
+<span class="md-b">**Note:**</span> Spatial thinking: this is exactly what the canvas is for.
+<span class="md-b">**Links:**</span> supports → C2
+
+<span class="md-h">### C2 · On-Reading-Slowly.pdf, p.1</span>
+<span class="md-q">&gt; What the codex offered was not speed but return…</span></pre>
       </div>
       <ul class="ai-prompts">
         <li>“Summarize my argument in five bullets.”</li>

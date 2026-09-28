@@ -948,7 +948,34 @@ if ('serviceWorker' in navigator) {
 
 // -------- boot --------
 
+// "Try it with a sample PDF" on the landing page links to app/?sample=1.
+// Load the bundled essay (or reopen it if this browser already has it) so a
+// first-time visitor sees a real document instead of an empty app. Returns
+// true when it opened the sample, so the welcome tour can wait for next time
+// rather than covering the page they just asked to see.
+const SAMPLE_NAME = 'On-Reading-Slowly.pdf';
+async function maybeOpenSample() {
+  const params = new URLSearchParams(location.search);
+  if (!params.has('sample')) return false;
+  params.delete('sample');
+  const qs = params.toString();
+  history.replaceState(null, '', location.pathname + (qs ? '?' + qs : '') + location.hash);
+  try {
+    const existing = (await DB.all('documents')).find((d) => d.name === SAMPLE_NAME);
+    if (existing) { await openDocument(existing.id); return true; }
+    const res = await fetch('sample/' + SAMPLE_NAME);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const blob = await res.blob();
+    await importPdf(new File([blob], SAMPLE_NAME, { type: 'application/pdf' }));
+    return true;
+  } catch (err) {
+    await showAlert('Couldn’t load the sample PDF. You can import any PDF of your own with “Import PDF”.');
+    return false;
+  }
+}
+
 (async function init() {
   await rail.load();
-  tour.maybeAutoStart();
+  const openedSample = await maybeOpenSample();
+  if (!openedSample) tour.maybeAutoStart();
 })();
