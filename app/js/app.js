@@ -3,6 +3,7 @@ import Rail from './rail.js';
 import PdfView from './pdfview.js';
 import NotesCanvas from './canvas.js';
 import Tour from './tour.js';
+import ThanksNote from './thanks.js';
 import { showAlert } from './modal.js';
 
 const readingEl = document.getElementById('reading');
@@ -83,7 +84,10 @@ pdfView.onSearchResults = (active, total) => {
 pdfView.onZoomChange = (z) => { zoomLevelEl.textContent = Math.round(z * 100) + '%'; };
 
 const canvas = new NotesCanvas(canvasEl, canvasInnerEl, linkGroupEl, canvasEmptyEl, {
-  onCardAdded: (card) => DB.put('cards', card),
+  onCardAdded: (card) => {
+    if (canvas.cards.length >= 10) thanks.maybeShow();
+    return DB.put('cards', card);
+  },
   onCardChanged: (card) => DB.put('cards', card),
   onCardRemoved: async (id) => {
     await DB.delete('cards', id);
@@ -519,6 +523,7 @@ canvasExportBtn.addEventListener('click', () => {
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+  thanks.maybeShow();
 });
 
 // -------- copy for AI --------
@@ -564,6 +569,7 @@ canvasCopyAiBtn.addEventListener('click', async () => {
   const label = canvasCopyAiBtn.querySelector('.canvas-copy-ai-label');
   label.textContent = ok ? 'Copied' : 'Copy failed';
   canvasCopyAiBtn.classList.toggle('is-done', ok);
+  if (ok) thanks.maybeShow();
   clearTimeout(copyAiResetTimer);
   copyAiResetTimer = setTimeout(() => {
     label.textContent = 'Copy for AI';
@@ -891,6 +897,13 @@ const tour = new Tour([
 ]);
 
 tourHelpBtn.addEventListener('click', () => tour.start());
+
+// -------- thank-you note --------
+// See thanks.js: a calm coffee-jar note after Marginalia has clearly been
+// useful, never during the tour or over an open dialog.
+const thanks = new ThanksNote({
+  isBusy: () => tour.index >= 0 || !!document.querySelector('.modal-overlay.open'),
+});
 
 // -------- PWA: install prompt + service worker --------
 // Chrome/Edge/Android hold the native install prompt back until the page
