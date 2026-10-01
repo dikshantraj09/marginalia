@@ -18,7 +18,7 @@
 // ever stored, for both precaching and runtime revalidation, and the v3
 // cache name makes sure everyone still holding the poisoned v2 entry gets
 // it evicted on the next visit rather than staying stuck on it forever.
-const CACHE_NAME = 'marginalia-shell-v16';
+const CACHE_NAME = 'marginalia-shell-v17';
 const SHELL_FILES = [
   './',
   './manifest.webmanifest',

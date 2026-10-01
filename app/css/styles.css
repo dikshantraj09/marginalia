@@ -1116,7 +1116,7 @@ button { font-family: inherit; }
 .card-note:focus { color: var(--ink); }
 .card .meta { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; }
 .card .page-tag { font-size: 10.5px; color: var(--accent-text); font-weight: 600; }
-.card .card-actions { display: flex; align-items: center; gap: 6px; }
+.card .card-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 .card .link-nub { position: relative; width: 13px; height: 13px; border-radius: 50%; background: var(--paper); border: 1.5px solid var(--ink-faint); cursor: crosshair; }
 .card .link-nub:hover { border-color: var(--accent-2); background: var(--accent-2-soft); }
 /* Invisible larger hit area around the small visible circle — a pointer
@@ -1130,6 +1130,13 @@ button { font-family: inherit; }
 }
 .card .del { font-size: 13px; color: var(--ink-faint); cursor: pointer; line-height: 1; }
 .card .del:hover { color: var(--danger); }
+.card .dl { display: inline-flex; flex-shrink: 0; color: var(--ink-faint); cursor: pointer; padding: 1px; border-radius: 3px; }
+/* Undo the canvas-wide link-thread rules (.canvas svg / .canvas svg path),
+   which would otherwise pin this icon to 1px and paint it as a thread. */
+.card .dl svg { position: static; flex-shrink: 0; width: 12px; height: 12px; pointer-events: none; }
+.card .dl svg path { fill: none; stroke: currentColor; stroke-width: 2.2; opacity: 1; }
+.card .dl:hover { color: var(--accent-text); }
+.card .dl:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 .canvas-empty {
   position: absolute;

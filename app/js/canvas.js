@@ -23,6 +23,26 @@ function truncateName(name) {
   const base = name.replace(/\.pdf$/i, '');
   return base.length > 22 ? base.slice(0, 22) + '…' : base;
 }
+const DOWNLOAD_ICON =
+  '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" ' +
+  'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>';
+
+// Saves an image excerpt as its own file, named after the PDF and page
+// (e.g. "On-Reading-Slowly-p1.png"). The image is already a data URL in
+// the card, so this never touches the network.
+async function downloadCardImage(c) {
+  const blob = await (await fetch(c.image)).blob();
+  const ext = (blob.type.split('/')[1] || 'png').replace('jpeg', 'jpg');
+  const base = (c.docName || 'excerpt').replace(/\.pdf$/i, '').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-') || 'excerpt';
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = base + '-p' + c.page + '.' + ext;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 function escapeAttr(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
@@ -455,6 +475,7 @@ export default class NotesCanvas {
     meta.innerHTML =
       '<span class="page-tag" title="' + escapeAttr(c.docName || '') + ', page ' + c.page + '">' + escapeAttr(sourceLabel) + '</span>' +
       '<span class="card-actions">' +
+      (c.image ? '<span class="dl" role="button" tabindex="0" title="Download image" aria-label="Download this image">' + DOWNLOAD_ICON + '</span>' : '') +
       '<span class="del" role="button" tabindex="0" title="Remove" aria-label="Remove this card">✕</span>' +
       '<span class="link-nub" role="button" tabindex="0" title="Drag to link, or press L on the card to link by keyboard" aria-label="Link this card to another"></span>' +
       '</span>';
@@ -466,6 +487,14 @@ export default class NotesCanvas {
     this.cardEls.set(c.id, el);
 
     this._wireCard(el, c, note, meta.querySelector('.link-nub'), meta.querySelector('.del'));
+
+    const dl = meta.querySelector('.dl');
+    if (dl) {
+      dl.addEventListener('click', () => downloadCardImage(c));
+      dl.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); downloadCardImage(c); }
+      });
+    }
   }
 
   _wireCard(el, c, noteEl, nub, delBtn) {
@@ -495,6 +524,7 @@ export default class NotesCanvas {
         return;
       }
       if (e.target === delBtn) return;
+      if (e.target.closest && e.target.closest('.dl')) return; // image download button, see _renderCard
       if (e.target === noteEl || noteEl.contains(e.target)) return; // let editing work normally
       dragging = true; moved = false; mode = null;
       startX = e.clientX; startY = e.clientY;
