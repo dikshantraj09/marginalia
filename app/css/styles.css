@@ -704,6 +704,8 @@ button { font-family: inherit; }
   touch-action: pan-y;
 }
 .pdf-page-wrap canvas { display: block; width: 100%; height: auto; }
+/* Full-resolution overlay while zoomed in (pdfview.js _renderSharp). */
+.pdf-page-wrap canvas.page-sharp { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
 .text-layer {
   position: absolute;
   top: 0; left: 0;

@@ -32,6 +32,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('../vendor/pdfjs/pdf.worker.min
 // spans underneath (worse the further right/down on the page, and worst of
 // all on a standard Letter/A4 page, which is wider than the reading column).
 const TARGET_PAGE_WIDTH = 640;
+const MAX_SHARP_PIXELS = 16 * 1024 * 1024;
 
 // A span only counts as "inside" the marquee once this much of its own area
 // overlaps it — lets a sloppy drag catch a line without also grabbing a
@@ -116,6 +117,14 @@ export default class PdfView {
       (entries) => this._onLazyIntersect(entries),
       { root: this.scrollHost, rootMargin: '1600px 0px' }
     );
+    // Sharp re-renders at the current zoom (see _refreshSharp below), only
+    // for pages in or near view.
+    this._sharpObserver = new IntersectionObserver(
+      (entries) => this._onSharpIntersect(entries),
+      { root: this.scrollHost, rootMargin: '600px 0px' }
+    );
+    this._sharpNear = new Set(); // pageNums currently in/near the viewport
+    this._sharpTimer = null;
     this._textCache = new Map(); // pageNum -> lowercased full page text, built lazily for search
     this._searchToken = 0; // bumped on every search()/load() so a stale in-flight search can bail out
   }
@@ -126,6 +135,9 @@ export default class PdfView {
     this._visibility.clear();
     this._pageObserver.disconnect();
     this._lazyObserver.disconnect();
+    this._sharpObserver.disconnect();
+    this._sharpNear.clear();
+    clearTimeout(this._sharpTimer);
     this._cancelDrag();
     this._pinch = null;
     this._pinchThrottle.cancel();
@@ -220,6 +232,7 @@ export default class PdfView {
     });
     this._pageObserver.observe(wrap);
     this._lazyObserver.observe(wrap);
+    this._sharpObserver.observe(wrap);
   }
 
   _onLazyIntersect(entries) {
@@ -299,7 +312,92 @@ export default class PdfView {
     await textLayer.render();
 
     info.page = page;
+    info.cssScale = cssScale;
     info.rendered = true;
+    if (this.zoom > 1 && this._sharpNear.has(pageNum)) this._scheduleSharp();
+  }
+
+  // ---------- sharp rendering when zoomed in ----------
+  // Every page's base canvas is rasterized once, for 100% zoom. Zoom is CSS
+  // `zoom` on the whole container (see setZoom), which just stretches that
+  // bitmap, so at 250% text goes visibly soft. Instead of re-rasterizing
+  // every page at the zoomed size (megapixels per page, never released),
+  // pages in or near view get a second, full-resolution canvas laid over
+  // the base one, rendered shortly after the zoom settles; it's dropped
+  // again when the page scrolls well out of view or zoom returns to 100%.
+  // The base canvas stays underneath, so nothing ever flashes blank.
+
+  _onSharpIntersect(entries) {
+    let changed = false;
+    for (const entry of entries) {
+      const pageNum = parseInt(entry.target.dataset.page, 10);
+      if (entry.isIntersecting) {
+        if (!this._sharpNear.has(pageNum)) { this._sharpNear.add(pageNum); changed = true; }
+      } else if (this._sharpNear.delete(pageNum)) {
+        this._dropSharp(this.pageWraps.get(pageNum));
+      }
+    }
+    if (changed && this.zoom > 1) this._scheduleSharp();
+  }
+
+  _scheduleSharp() {
+    clearTimeout(this._sharpTimer);
+    this._sharpTimer = setTimeout(() => this._refreshSharp(), 180);
+  }
+
+  _refreshSharp() {
+    for (const [pageNum, info] of this.pageWraps) {
+      if (this.zoom > 1 && this._sharpNear.has(pageNum)) {
+        if (info.rendered) this._renderSharp(info);
+      } else {
+        this._dropSharp(info);
+      }
+    }
+  }
+
+  _dropSharp(info) {
+    if (!info) return;
+    if (info.sharpTask) { info.sharpTask.cancel(); info.sharpTask = null; }
+    if (info.sharpCanvas) {
+      info.sharpCanvas.width = 0; // frees the bitmap now, not at GC
+      info.sharpCanvas.remove();
+      info.sharpCanvas = null;
+      info.sharpZoom = 0;
+    }
+  }
+
+  async _renderSharp(info) {
+    const zoom = this.zoom;
+    if (info.sharpZoom === zoom && (info.sharpCanvas || info.sharpTask)) return;
+    if (info.sharpTask) { info.sharpTask.cancel(); info.sharpTask = null; }
+    const dpr = window.devicePixelRatio || 1;
+    let scale = info.cssScale * dpr * zoom;
+    const base = info.page.getViewport({ scale: 1 });
+    // Browsers refuse (iOS Safari) or crawl on very large canvases; cap the
+    // bitmap at ~16M pixels, which is still far sharper than the base.
+    const maxScale = Math.sqrt(MAX_SHARP_PIXELS / (base.width * base.height));
+    scale = Math.min(scale, maxScale);
+    const viewport = info.page.getViewport({ scale });
+    const canvas = document.createElement('canvas');
+    canvas.className = 'page-sharp';
+    canvas.width = Math.floor(viewport.width);
+    canvas.height = Math.floor(viewport.height);
+    info.sharpZoom = zoom;
+    const task = info.page.render({ canvasContext: canvas.getContext('2d'), viewport });
+    info.sharpTask = task;
+    try {
+      await task.promise;
+    } catch (err) {
+      canvas.width = 0;
+      return; // cancelled by a newer zoom or by scrolling away
+    }
+    if (info.sharpTask !== task) { canvas.width = 0; return; }
+    info.sharpTask = null;
+    const old = info.sharpCanvas;
+    const baseCanvas = info.wrap.querySelector('canvas:not(.page-sharp)');
+    info.wrap.insertBefore(canvas, baseCanvas ? baseCanvas.nextSibling : info.wrap.firstChild);
+    info.sharpCanvas = canvas;
+    if (old) { old.width = 0; old.remove(); }
   }
 
   _onPageIntersect(entries) {
@@ -369,6 +467,7 @@ export default class PdfView {
     // case where a non-zero, non-recentered scroll position is exactly the
     // point (keeping the pinch anchored under the fingers).
     this.scrollHost.scrollLeft = 0;
+    this._scheduleSharp();
     if (this.onZoomChange) this.onZoomChange(this.zoom);
     return this.zoom;
   }
