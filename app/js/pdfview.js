@@ -33,6 +33,10 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('../vendor/pdfjs/pdf.worker.min
 // all on a standard Letter/A4 page, which is wider than the reading column).
 const TARGET_PAGE_WIDTH = 640;
 const MAX_SHARP_PIXELS = 16 * 1024 * 1024;
+// Zoom range. 1000% is far past what any reader needs; the floor keeps a
+// page from shrinking to a thumbnail you can't hit with a marquee.
+const MIN_ZOOM = 0.25;
+const MAX_ZOOM = 10;
 
 // A span only counts as "inside" the marquee once this much of its own area
 // overlaps it — lets a sloppy drag catch a line without also grabbing a
@@ -124,6 +128,8 @@ export default class PdfView {
       { root: this.scrollHost, rootMargin: '600px 0px' }
     );
     this._sharpNear = new Set(); // pageNums currently in/near the viewport
+    // Past ~300% only the visible part of a page is sharp, so follow scrolling.
+    this.scrollHost.addEventListener('scroll', () => { if (this.zoom > 1) this._scheduleSharp(); }, { passive: true });
     this._sharpTimer = null;
     this._textCache = new Map(); // pageNum -> lowercased full page text, built lazily for search
     this._searchToken = 0; // bumped on every search()/load() so a stale in-flight search can bail out
@@ -362,29 +368,68 @@ export default class PdfView {
       info.sharpCanvas.width = 0; // frees the bitmap now, not at GC
       info.sharpCanvas.remove();
       info.sharpCanvas = null;
-      info.sharpZoom = 0;
     }
+    info.sharpZoom = 0;
+    info.sharpRegion = null;
+  }
+
+  // Which part of the page to rasterize, in the page's own (pre-zoom) CSS
+  // px, and at how many device px per CSS px (k). Whole page when that fits
+  // under MAX_SHARP_PIXELS; past that (roughly 300%+ on a retina screen) just
+  // the visible part plus a margin, re-rendered as you scroll, so zoom has
+  // no practical ceiling on sharpness.
+  _sharpPlan(info, pad) {
+    const W = info.viewport.width, H = info.viewport.height;
+    const k = (window.devicePixelRatio || 1) * this.zoom;
+    if (W * H * k * k <= MAX_SHARP_PIXELS) return { x: 0, y: 0, w: W, h: H, k, full: true };
+    const wr = info.wrap.getBoundingClientRect();
+    const hr = this.scrollHost.getBoundingClientRect();
+    const f = wr.width / W; // screen px per page px (the zoom, as laid out)
+    const x0 = (Math.max(hr.left, wr.left) - wr.left) / f;
+    const x1 = (Math.min(hr.right, wr.right) - wr.left) / f;
+    const y0 = (Math.max(hr.top, wr.top) - wr.top) / f;
+    const y1 = (Math.min(hr.bottom, wr.bottom) - wr.top) / f;
+    if (x1 <= x0 || y1 <= y0) return null;
+    let px = (x1 - x0) * pad, py = (y1 - y0) * pad, r;
+    for (let i = 0; i < 6; i++) {
+      const x = Math.max(0, x0 - px), y = Math.max(0, y0 - py);
+      r = { x, y, w: Math.min(W, x1 + px) - x, h: Math.min(H, y1 + py) - y, k, full: false };
+      if (r.w * r.h * k * k <= MAX_SHARP_PIXELS) return r;
+      px *= 0.5; py *= 0.5;
+    }
+    // Even the bare visible area is over budget (a huge screen): lower k.
+    r.k = Math.sqrt(MAX_SHARP_PIXELS / (r.w * r.h));
+    return r;
   }
 
   async _renderSharp(info) {
     const zoom = this.zoom;
-    if (info.sharpZoom === zoom && (info.sharpCanvas || info.sharpTask)) return;
-    if (info.sharpTask) { info.sharpTask.cancel(); info.sharpTask = null; }
-    const dpr = window.devicePixelRatio || 1;
-    let scale = info.cssScale * dpr * zoom;
-    const base = info.page.getViewport({ scale: 1 });
-    // Browsers refuse (iOS Safari) or crawl on very large canvases; cap the
-    // bitmap at ~16M pixels, which is still far sharper than the base.
-    const maxScale = Math.sqrt(MAX_SHARP_PIXELS / (base.width * base.height));
-    scale = Math.min(scale, maxScale);
-    const viewport = info.page.getViewport({ scale });
+    const have = info.sharpRegion;
+    if (have && info.sharpZoom === zoom) {
+      if (have.full) return;
+      // Still covering what's on screen? Then leave it alone.
+      const vis = this._sharpPlan(info, 0);
+      if (!vis || (vis.x >= have.x - 1 && vis.y >= have.y - 1 &&
+          vis.x + vis.w <= have.x + have.w + 1 && vis.y + vis.h <= have.y + have.h + 1)) return;
+    }
+    if (info.sharpTask) {
+      if (info.sharpTaskZoom === zoom && info.sharpTaskFull) return; // same full render already running
+      info.sharpTask.cancel();
+      info.sharpTask = null;
+    }
+    const plan = this._sharpPlan(info, 0.6);
+    if (!plan) return;
+    const { x, y, w, h, k } = plan;
+    const viewport = info.page.getViewport({ scale: info.cssScale * k, offsetX: -x * k, offsetY: -y * k });
     const canvas = document.createElement('canvas');
     canvas.className = 'page-sharp';
-    canvas.width = Math.floor(viewport.width);
-    canvas.height = Math.floor(viewport.height);
-    info.sharpZoom = zoom;
+    canvas.width = Math.ceil(w * k);
+    canvas.height = Math.ceil(h * k);
+    Object.assign(canvas.style, { left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px' });
     const task = info.page.render({ canvasContext: canvas.getContext('2d'), viewport });
     info.sharpTask = task;
+    info.sharpTaskZoom = zoom;
+    info.sharpTaskFull = plan.full;
     try {
       await task.promise;
     } catch (err) {
@@ -397,6 +442,8 @@ export default class PdfView {
     const baseCanvas = info.wrap.querySelector('canvas:not(.page-sharp)');
     info.wrap.insertBefore(canvas, baseCanvas ? baseCanvas.nextSibling : info.wrap.firstChild);
     info.sharpCanvas = canvas;
+    info.sharpZoom = zoom;
+    info.sharpRegion = plan;
     if (old) { old.width = 0; old.remove(); }
   }
 
@@ -451,7 +498,7 @@ export default class PdfView {
   // know the zoom level at all.
 
   setZoom(z) {
-    this.zoom = Math.min(2.5, Math.max(0.5, z));
+    this.zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z));
     this.container.style.zoom = this.zoom;
     // Zooming in can widen the page past the pane, and jumping to a search
     // match while zoomed can then scroll it sideways to bring a wide line
@@ -471,8 +518,16 @@ export default class PdfView {
     if (this.onZoomChange) this.onZoomChange(this.zoom);
     return this.zoom;
   }
-  zoomIn() { return this.setZoom(Math.round((this.zoom + 0.15) * 100) / 100); }
-  zoomOut() { return this.setZoom(Math.round((this.zoom - 0.15) * 100) / 100); }
+  // 15% steps up to 200%, then 25% multiplicative ones, so getting to the
+  // top of the range doesn't take sixty clicks.
+  zoomIn() {
+    const z = this.zoom < 2 ? this.zoom + 0.15 : this.zoom * 1.25;
+    return this.setZoom(Math.round(z * 100) / 100);
+  }
+  zoomOut() {
+    const z = this.zoom > 2 ? this.zoom / 1.25 : this.zoom - 0.15;
+    return this.setZoom(Math.round(z * 100) / 100);
+  }
   zoomReset() { return this.setZoom(1); }
 
   // ---------- table of contents ----------
@@ -963,7 +1018,7 @@ export default class PdfView {
   _previewZoomGesture(targetZoom, clientX, clientY) {
     const g = this._zoomGesture;
     if (!g) return;
-    g.z = Math.min(2.5, Math.max(0.5, targetZoom));
+    g.z = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, targetZoom));
     g.mid = { x: clientX, y: clientY };
     const tx = (clientX - g.start.x) / g.z0;
     const ty = (clientY - g.start.y) / g.z0;

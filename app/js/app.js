@@ -341,6 +341,48 @@ fileInput.addEventListener('change', () => {
   fileInput.value = '';
 });
 
+// -------- drag-and-drop import --------
+// Drop one or more PDFs anywhere on the app. Only drags that carry files
+// count: the sidebar's own drag-to-folder rows use a custom data type and
+// are left alone. Without this, a PDF dropped on the page would make the
+// browser navigate away to view it.
+const dropOverlay = document.createElement('div');
+dropOverlay.className = 'drop-overlay';
+dropOverlay.setAttribute('aria-hidden', 'true');
+dropOverlay.innerHTML = '<div class="drop-overlay-card">Drop PDF to import</div>';
+document.body.appendChild(dropOverlay);
+let dragDepth = 0;
+const isFileDrag = (e) => e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files');
+window.addEventListener('dragenter', (e) => {
+  if (!isFileDrag(e)) return;
+  e.preventDefault();
+  dragDepth++;
+  dropOverlay.classList.add('open');
+});
+window.addEventListener('dragover', (e) => {
+  if (!isFileDrag(e)) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'copy';
+});
+window.addEventListener('dragleave', (e) => {
+  if (!isFileDrag(e)) return;
+  dragDepth = Math.max(0, dragDepth - 1);
+  if (!dragDepth) dropOverlay.classList.remove('open');
+});
+window.addEventListener('drop', async (e) => {
+  if (!isFileDrag(e)) return;
+  e.preventDefault();
+  dragDepth = 0;
+  dropOverlay.classList.remove('open');
+  const files = Array.from(e.dataTransfer.files || []);
+  const pdfs = files.filter((f) => f.type === 'application/pdf' || /\.pdf$/i.test(f.name));
+  if (!pdfs.length) {
+    if (files.length) await showAlert('Marginalia opens PDF files. "' + files[0].name + '" isn’t one.');
+    return;
+  }
+  for (const f of pdfs) await importPdf(f);
+});
+
 railToggle.addEventListener('click', () => railEl.classList.toggle('open'));
 
 // -------- folder rail collapse (desktop "just read" mode, mirrors the
